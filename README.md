@@ -4,6 +4,8 @@ Este trabalho é para a cadeira de sistemas operacionais 2 da UFRGS.
 Nele faremos um clone do dropbox usando as bibliotecas nativas do linux como socket e posix threads para a sincronização.
 Além disso é usado como biblioteca de marshaling o [flatbuffers](https://flatbuffers.dev/).
 
+### [Relatório](https://docs.google.com/document/d/1-ptL4HAKw9wUs0s0x6USNVZ0HPW01sTw8iaXfZs3zEs/edit?usp=sharing)
+
 ## Buildar o projeto
 Esse projeto é feito para linux, então se estiver no windows é requerido o uso de WSL.
 Para a build se usa `cmake`, versão mínima sendo 3.20.
