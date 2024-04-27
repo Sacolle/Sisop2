@@ -13,20 +13,24 @@
 namespace net{
 
 	int Socket::read(void *buf, int len){
-		return recv(fd, buf, len, 0);
+		return ::recv(fd, buf, len, 0);
 	}
 
 	int Socket::send(const void *msg, int len){
 		return ::send(fd, msg, len, 0);
 	}
 
+	void Socket::print_their_info(){
+		std::cout << "IP: " << their_ip << ":" << their_port << std::endl;
+	}
+
 	//server
-	void ServerSocket::open(const char* port){
+	void ServerSocket::open(const char* port, const int backlog){
 		struct addrinfo *servinfo, *p, hints;
 		int res, yes = 1;
 		
 		memset(&hints, 0, sizeof hints);
-		hints.ai_family = AF_UNSPEC;
+		hints.ai_family = AF_INET;
 		hints.ai_socktype = SOCK_STREAM;
 		hints.ai_flags = AI_PASSIVE; 
 
@@ -60,11 +64,10 @@ namespace net{
 		if(p == NULL){
 			throw NetworkException("Server Failed to bind");
 		}
+		//save data
+
 		freeaddrinfo(servinfo); // all done with this structure
 		//at this point fd = the socket file descriptor
-	}
-
-	void ServerSocket::listen(const int backlog){
 		if(::listen(fd, backlog) == -1){
 			std::string error_message("Failed to listen to port: \n\t");
 			error_message += strerror(errno);
@@ -72,7 +75,7 @@ namespace net{
 		}
 	}
 
-	Socket ServerSocket::accept(){
+	std::unique_ptr<Socket> ServerSocket::accept(){
 		struct sockaddr_storage their_addr;
 		socklen_t addr_size = sizeof(their_addr);
 		int accept_sock = ::accept(fd, (struct sockaddr *)&their_addr, &addr_size);
@@ -81,9 +84,12 @@ namespace net{
 			error_message += strerror(errno);
 			throw NetworkException(error_message);
 		}
-		//NOTE: estrutura their_addr contains the value and ip n stuff
+		//le as informações de porta e ip do endereço conectado
+		char ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &((struct sockaddr_in*)&their_addr)->sin_addr, ip, INET_ADDRSTRLEN );
+		u_int16_t port = ntohs(((struct sockaddr_in*)&their_addr)->sin_port);
 		//could be saved at socket
-		return std::move(Socket(accept_sock));
+		return std::make_unique<Socket>(accept_sock, ip, port);
 	}
 	//client
 	void ClientSocket::connect(const char* ip, const char* port){
