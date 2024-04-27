@@ -19,3 +19,5 @@ cmake --build build
 Os executáveis estarão dentro de build nas pastas client e server.
 
 Lembrando que se você está no windows, faça por WSL e instale as extensões do VSCODE no WSL.
+
+Caso ainda tenha erros no VSCODE, tem essa [resposta no StackOverflow que resolve](https://stackoverflow.com/a/71115284)
