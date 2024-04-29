@@ -1,0 +1,57 @@
+//Example IDL file for our monster's schema.
+ 
+namespace Net;
+
+union Operation { 
+	FileMeta,
+	FileData,
+	// operations
+	Connect,
+	ListFiles,
+	Download,
+	Delete,
+	Response
+}
+ 
+table Packet {
+	seqn: long; //TODO: change to size
+	op: Operation;
+}
+
+table Connect {
+	username: string;
+}
+
+table FileMeta {
+	id: long; 		//id for ease to test if data is from file
+	name: string;
+	size: long;		//total size of the file
+	// -- other stuff
+}
+
+table FileData {
+	id: long;
+	// -- other stuff
+	data: [ubyte]; //chunck of data
+}
+
+table ListFiles {
+	username: string;
+}
+
+table Download {
+	filename: string;
+}
+
+table Delete {
+	filename: string;
+}
+
+enum Status:byte { Ok, FileNotFound, BadFile, OutOfSeq }
+
+table Response {
+	status: Status;
+	msg: string;
+}
+ 
+root_type Packet;

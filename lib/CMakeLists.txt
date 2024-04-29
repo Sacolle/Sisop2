@@ -25,10 +25,11 @@ FetchContent_MakeAvailable(flatbuffers)
 target_link_libraries(lib PUBLIC flatbuffers) 
 
 #adicionando os schemas de mensagem
+file(GLOB_RECURSE SCHEMA_FILES ${CMAKE_CURRENT_SOURCE_DIR}/schemas/*.fbs)
 
 flatbuffers_generate_headers(
 	TARGET project_schemas
-	SCHEMAS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/monster.fbs
+	SCHEMAS ${SCHEMA_FILES}
 )
 
 target_link_libraries(lib PUBLIC project_schemas) 
