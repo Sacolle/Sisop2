@@ -16,8 +16,8 @@ void echo(std::unique_ptr<net::Socket> s){
 	int seqn = 0;
 
 	auto connect = Net::CreateConnect(builder, builder.CreateString("Meu Nome"));
-	auto packet = Net::CreatePacket(builder, seqn++, Net::Operation_Connect, connect.Union());
-	builder.Finish(packet);
+	auto packet = Net::CreatePacket(builder, Net::Operation_Connect, connect.Union());
+	builder.FinishSizePrefixed(packet);
 
 	int sent_bytes = s->send(builder.GetBufferPointer(), builder.GetSize());
 
@@ -26,15 +26,26 @@ void echo(std::unique_ptr<net::Socket> s){
 		exit(2);
 	}
 
+	std::cout << "Enviou " << builder.GetSize() << " bytes " << std::endl;
+
 	int read_bytes = s->read(buff, 256);
-	auto msg = Net::GetPacket(buff);
+
+	auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength((u_int8_t*) buff);
+	if(read_bytes != expected_msg_size){
+		std::cerr << "pacote ainda n foi recebido inteiro" << std::endl;
+		exit(2);
+	}
+
+	std::cout << "recebeu " << expected_msg_size << " bytes " << std::endl;
+
+	auto msg = Net::GetSizePrefixedPacket(buff);
 
 	if(msg->op_type() != Net::Operation_Response){
 		std::cerr << "q operação eh ent?" << std::endl;
 		exit(2);
 	}		
 	auto payload = static_cast<const Net::Response*>(msg->op());
-	std::cout << "Reposta legal " << payload->msg()->c_str() << std::endl;
+	std::cout << "Reposta legal " << payload->msg()->str() << std::endl;
 }
 
 

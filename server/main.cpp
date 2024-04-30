@@ -12,11 +12,21 @@ void echo(std::unique_ptr<net::Socket> s){
 	flatbuffers::FlatBufferBuilder builder;
 	int seqn = 0;
 	while(1){
+		bzero(buff, 256);
 		builder.Clear();
 		int read_bytes = s->read(buff, 256);
 		//buff[read_bytes] = '\0';
 		//std::cout << buff;
-		auto msg = Net::GetPacket(buff);
+
+		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength((u_int8_t*) buff);
+		if(read_bytes != expected_msg_size){
+			std::cerr << "pacote ainda n foi recebido inteiro" << std::endl;
+			exit(1);
+		}
+
+		std::cout << "recebeu " << expected_msg_size << " bytes " << std::endl;
+
+		auto msg = Net::GetSizePrefixedPacket(buff);
 
 		if(msg->op_type() != Net::Operation_Connect){
 			std::cerr << "q operação eh ent?" << std::endl;
@@ -29,10 +39,13 @@ void echo(std::unique_ptr<net::Socket> s){
 		msg_res += payload->username()->str();
 
 		auto response = Net::CreateResponse(builder, Net::Status_Ok, builder.CreateString(msg_res));
-		auto packet = Net::CreatePacket(builder, seqn++, Net::Operation_Response, response.Union());
-		builder.Finish(packet);
+		auto packet = Net::CreatePacket(builder, Net::Operation_Response, response.Union());
+		//NOTE: termina préfixando o tamanho do pacote no buffer
+		builder.FinishSizePrefixed(packet);
 
 		int sent_bytes = s->send(builder.GetBufferPointer(), builder.GetSize());
+
+		std::cout << "Enviou " << builder.GetSize() << " bytes " << std::endl;
 
 		if(sent_bytes != builder.GetSize()){
 			std::cerr << "n enviou tudo ;-;" << std::endl;

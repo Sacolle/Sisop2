@@ -1,6 +1,4 @@
 #include "sock.hpp"
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -9,15 +7,148 @@
 #include <cerrno>
 #include <iostream>
 
-
 namespace net{
+	void Socket::send_connect(std::string& username){
+		builder.Clear();
 
-	int Socket::read(void *buf, int len){
-		return ::recv(fd, buf, len, 0);
+		auto connect = Net::CreateConnect(builder, builder.CreateString(username));
+		auto packet = Net::CreatePacket(builder, Net::Operation_Connect, connect.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(); 
+		}
 	}
+	void Socket::send_listfiles(){
+		builder.Clear();
 
-	int Socket::send(const void *msg, int len){
-		return ::send(fd, msg, len, 0);
+		auto list_files = Net::CreateListFiles(builder);
+		auto packet = Net::CreatePacket(builder, Net::Operation_ListFiles, list_files.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(); 
+		}
+	}
+	void Socket::send_download(std::string& filename){
+		builder.Clear();
+
+		auto dowload = Net::CreateDownload(builder, builder.CreateString(filename));
+		auto packet = Net::CreatePacket(builder, Net::Operation_Download, dowload.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(); 
+		}
+
+	}
+	void Socket::send_delete(std::string& filename){
+		builder.Clear();
+
+		auto del = Net::CreateDelete(builder, builder.CreateString(filename));
+		auto packet = Net::CreatePacket(builder, Net::Operation_Delete, del.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(); 
+		}
+
+	}
+	void Socket::send_response(Net::Status status, std::string& msg){
+		builder.Clear();
+
+		auto response = Net::CreateResponse(builder, status, builder.CreateString(msg));
+		auto packet = Net::CreatePacket(builder, Net::Operation_Response, response.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(); 
+		}
+	}
+	#define READ_BUFFER_SIZE 1024
+	#define SOCKET_READ_ATTEMPS 3
+
+	//reads the whole packet, and returns the data associated with it
+	std::unique_ptr<PayloadData> Socket::read_operation(){
+		u_int8_t buff[READ_BUFFER_SIZE]; //NOTE: is there a better way or this is fine?
+		
+		builder.Clear();
+		bzero(buff, READ_BUFFER_SIZE);
+
+		int read_bytes = read(buff, READ_BUFFER_SIZE);
+		int tries = SOCKET_READ_ATTEMPS;
+
+		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(buff);
+		
+		//enquanto n ler todos os bytes esperados do pacote, append no buffers os bytes chegando
+		while(read_bytes < expected_msg_size && tries > 0){
+			read_bytes += read(buff + read_bytes, READ_BUFFER_SIZE - read_bytes);
+			tries--;
+		}
+		if(read_bytes != expected_msg_size){
+			throw TransmissionException();
+		}
+
+		auto msg = Net::GetSizePrefixedPacket(buff);
+
+		switch (msg->op_type()){
+		case Net::Operation_Connect: {
+			auto payload = static_cast<const Net::Connect*>(msg->op());
+			return std::make_unique<PayloadData>(
+				Net::Operation_Connect, 
+				std::move(payload->username()->str())
+			);
+		} break;
+		case Net::Operation_ListFiles: {
+			return std::make_unique<PayloadData>(Net::Operation_ListFiles);
+		} break;
+		case Net::Operation_Download: {
+			auto payload = static_cast<const Net::Download*>(msg->op());
+			return std::make_unique<PayloadData>(
+				Net::Operation_Download, 
+				std::move(payload->filename()->str())
+			);
+		} break;
+		case Net::Operation_Delete: {
+			auto payload = static_cast<const Net::Delete*>(msg->op());
+			return std::make_unique<PayloadData>(
+				Net::Operation_Delete, 
+				std::move(payload->filename()->str())
+			);
+		} break;
+		case Net::Operation_Response: {
+			auto payload = static_cast<const Net::Response*>(msg->op());
+			return std::make_unique<PayloadData>(
+				payload->status(),
+				std::move(payload->msg()->str())
+			);
+		} break;
+		case Net::Operation_FileMeta: {
+			auto payload = static_cast<const Net::FileMeta*>(msg->op());
+			return std::make_unique<PayloadData>(
+				payload->id(),
+				payload->size(),
+				std::move(payload->name()->str())
+			);
+		} break;
+		case Net::Operation_FileData: 
+			//TODO:
+			return std::make_unique<PayloadData>(3);
+			break;
+		default:
+			//didn't match any operation known
+			throw TransmissionException();
+		}
 	}
 
 	void Socket::print_their_info(){

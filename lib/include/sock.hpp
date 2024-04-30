@@ -4,15 +4,78 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <stdexcept>
 #include <string>
 #include <memory>
 
+#include "packet_generated.h"
+
+#define FLATBUFFER_DEFAULT_SIZE 1024
 
 namespace net{
 	class NetworkException : public std::runtime_error{
 		public:
 			NetworkException(const std::string& what) : std::runtime_error(what){}
+	};
+	class TransmissionException : public std::exception {
+		/* NOTE: definir como fazer as exceções, se fazer com vários tipos, ou se fazer 1 com um enum
+		public:
+			const char* what() const noexcept override {
+
+			}
+		private:
+			int type ;
+		*/
+	};
+	namespace _inner{
+		struct t_response {
+			Net::Status status;
+			std::string msg;	
+		};
+		struct t_filemeta {
+			uint64_t id;
+			uint64_t size;
+			std::string name;
+		};
+		struct t_filedata{
+			int file; //TODO: file descriptor (schenenigans)
+		};
+
+		union t_payload {
+			t_payload(){ 
+				memset( this, 0, sizeof( t_payload ) ); 
+			}
+			~t_payload(){}
+			t_filedata filedata;
+			t_filemeta filemeta;
+			t_response response;
+			std::string text;
+		};
+	};
+
+	class PayloadData {
+		public:
+			PayloadData(Net::Operation op): operation_type(op){}
+			PayloadData(Net::Operation op, std::string text): operation_type(op){
+				payload.text = std::move(text);
+			}
+			PayloadData(Net::Status status, std::string msg): operation_type(Net::Operation_Response){
+				payload.response.status = status;
+				payload.response.msg = std::move(msg);
+			}
+			PayloadData(u_int32_t id, u_int32_t size, std::string name): operation_type(Net::Operation_FileMeta){
+				payload.filemeta.id = id;
+				payload.filemeta.size = size;
+				payload.filemeta.name = std::move(name);
+			}
+			PayloadData(int f): operation_type(Net::Operation_FileData){
+				payload.filedata.file = f;
+			}
+
+			Net::Operation operation_type;
+			_inner::t_payload payload;
 	};
 
 	class Socket{
@@ -21,24 +84,46 @@ namespace net{
 			Socket& operator= (const Socket&) = delete;
 			
 			Socket(){}
-			Socket(int sock_fd): fd(sock_fd){}
+			Socket(int sock_fd): fd(sock_fd), builder(FLATBUFFER_DEFAULT_SIZE){}
 			Socket(int sock_fd, char* ip, u_int16_t port): 
-				fd(sock_fd), their_ip(ip), their_port(port){}
+				fd(sock_fd), their_ip(ip), their_port(port), builder(FLATBUFFER_DEFAULT_SIZE){}
 			//destructor closes the socket
 			~Socket(){
 				//NOTE: usado aqui para, nesse estágio incial, notar se n há double frees no design
 				printf("Destrutor da socket %d\n", fd);
 				close(fd);
 			}
+			inline int read(void *buf, int len){
+				return ::recv(fd, buf, len, 0);
+			}
+			inline int send(const void *msg, int len){
+				return ::send(fd, msg, len, 0);
+			}
 
-			int read(void *buf, int len);
-			int send(const void *msg, int len);
 			void print_their_info();
+
+			//section on message passing
+			void send_file(std::string& filename); //TODO:
+
+			void send_connect(std::string& username);
+			void send_listfiles();
+			void send_download(std::string& filename);
+			void send_delete(std::string& filename);
+			void send_response(Net::Status status, std::string& msg); //define type enum
+		
+			std::unique_ptr<PayloadData> read_operation();
+
 		protected:
 			int fd = 0;
 		private:
+			//TODO: implementações de mandar os metadados e o chunk de arquivo
+			void send_filemeta();
+			void send_filedata();
+
+
 			std::string their_ip;
 			u_int16_t their_port;
+			flatbuffers::FlatBufferBuilder builder;
 
 	};
 	class ServerSocket : public Socket{

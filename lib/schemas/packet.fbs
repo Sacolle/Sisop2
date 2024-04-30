@@ -14,7 +14,8 @@ union Operation {
 }
  
 table Packet {
-	seqn: long; //TODO: change to size
+	//the size of the packet is set with with prefix size and retrived with such
+	//that is to see if it sent it whole packet, that it did not fragment
 	op: Operation;
 }
 
@@ -23,20 +24,19 @@ table Connect {
 }
 
 table FileMeta {
-	id: long; 		//id for ease to test if data is from file
+	id: ulong; 		//id for ease to test if data is from file
 	name: string;
-	size: long;		//total size of the file
+	size: ulong;		//total size of the file
 	// -- other stuff
 }
 
 table FileData {
-	id: long;
+	id: ulong;
 	// -- other stuff
 	data: [ubyte]; //chunck of data
 }
 
 table ListFiles {
-	username: string;
 }
 
 table Download {
@@ -47,7 +47,7 @@ table Delete {
 	filename: string;
 }
 
-enum Status:byte { Ok, FileNotFound, BadFile, OutOfSeq }
+enum Status: ubyte { Ok, Error, FileNotFound, BadFile, OutOfSeq }
 
 table Response {
 	status: Status;
