@@ -60,7 +60,7 @@ void basic_op(std::unique_ptr<net::Socket> socket){
 			exit(2);
 		}
 		std::cout << "reposta do servidor: " << response->payload.response.msg << std::endl;
-	}catch(const net::TransmissionException& e){
+	}catch(...){
 		std::cerr << "erro na execução das funções " << std::endl;
 	}
 }

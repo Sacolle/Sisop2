@@ -18,7 +18,7 @@ namespace net{
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
 
 		if(sent_bytes != builder.GetSize()){
-			throw TransmissionException(); 
+			throw TransmissionException(Net::Operation_Connect); 
 		}
 	}
 	void Socket::send_listfiles(){
@@ -31,7 +31,7 @@ namespace net{
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
 
 		if(sent_bytes != builder.GetSize()){
-			throw TransmissionException(); 
+			throw TransmissionException(Net::Operation_ListFiles); 
 		}
 	}
 	void Socket::send_download(std::string& filename){
@@ -44,7 +44,7 @@ namespace net{
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
 
 		if(sent_bytes != builder.GetSize()){
-			throw TransmissionException(); 
+			throw TransmissionException(Net::Operation_Download); 
 		}
 
 	}
@@ -58,7 +58,7 @@ namespace net{
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
 
 		if(sent_bytes != builder.GetSize()){
-			throw TransmissionException(); 
+			throw TransmissionException(Net::Operation_Delete); 
 		}
 
 	}
@@ -72,7 +72,7 @@ namespace net{
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
 
 		if(sent_bytes != builder.GetSize()){
-			throw TransmissionException(); 
+			throw TransmissionException(Net::Operation_Response); //incomplete message
 		}
 	}
 
@@ -82,6 +82,9 @@ namespace net{
 		bzero(read_buff, READ_BUFFER_SIZE);
 
 		int read_bytes = read(read_buff, READ_BUFFER_SIZE);
+		if(read_bytes == 0){
+			throw CloseConnectionException(); //closed connection
+		}
 		int tries = SOCKET_READ_ATTEMPS;
 
 		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(read_buff);
@@ -92,7 +95,7 @@ namespace net{
 			tries--;
 		}
 		if(read_bytes != expected_msg_size){
-			throw TransmissionException();
+			throw ReceptionException(); //incomplete message
 		}
 
 		auto msg = Net::GetSizePrefixedPacket(read_buff);
@@ -102,7 +105,7 @@ namespace net{
 			auto payload = static_cast<const Net::Connect*>(msg->op());
 			return std::make_unique<PayloadData>(
 				Net::Operation_Connect, 
-				std::move(payload->username()->str())
+				payload->username()->c_str()
 			);
 		} break;
 		case Net::Operation_ListFiles: {
@@ -112,21 +115,21 @@ namespace net{
 			auto payload = static_cast<const Net::Download*>(msg->op());
 			return std::make_unique<PayloadData>(
 				Net::Operation_Download, 
-				std::move(payload->filename()->str())
+				payload->filename()->c_str()
 			);
 		} break;
 		case Net::Operation_Delete: {
 			auto payload = static_cast<const Net::Delete*>(msg->op());
 			return std::make_unique<PayloadData>(
 				Net::Operation_Delete, 
-				std::move(payload->filename()->str())
+				payload->filename()->c_str()
 			);
 		} break;
 		case Net::Operation_Response: {
 			auto payload = static_cast<const Net::Response*>(msg->op());
 			return std::make_unique<PayloadData>(
 				payload->status(),
-				std::move(payload->msg()->str())
+				payload->msg()->c_str()
 			);
 		} break;
 		case Net::Operation_FileMeta: {
@@ -134,7 +137,7 @@ namespace net{
 			return std::make_unique<PayloadData>(
 				payload->id(),
 				payload->size(),
-				std::move(payload->name()->str())
+				payload->name()->c_str()
 			);
 		} break;
 		case Net::Operation_FileData: 
@@ -143,7 +146,7 @@ namespace net{
 			break;
 		default:
 			//didn't match any operation known
-			throw TransmissionException();
+			throw ReceptionException();
 		}
 	}
 

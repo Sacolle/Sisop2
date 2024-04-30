@@ -68,8 +68,13 @@ void laco(std::unique_ptr<net::Socket> socket){
 			std::string res("Conectado corretamente!");
 			socket->send_response(Net::Status_Ok, res);
 		}catch(const net::TransmissionException& e){
-			std::cerr << "erro na execução das funções " << std::endl;
-			exit(2);
+			std::cerr << "erro no envio do pacote" << std::endl;
+			//TODO: resend
+		}catch(const net::ReceptionException& e){
+			std::cerr << "Falha ao ler o pacote" << std::endl;
+		}catch(const net::CloseConnectionException& e){
+			std::cerr << "Cliente desconectado" << std::endl;
+			exit(1);
 		}
 	}
 }

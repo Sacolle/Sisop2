@@ -22,59 +22,63 @@ namespace net{
 			NetworkException(const std::string& what) : std::runtime_error(what){}
 	};
 	class TransmissionException : public std::exception {
-		/* NOTE: definir como fazer as exceções, se fazer com vários tipos, ou se fazer 1 com um enum
 		public:
-			const char* what() const noexcept override {
-
-			}
-		private:
-			int type ;
-		*/
+			TransmissionException(Net::Operation type): type(type){}
+			Net::Operation type;
 	};
+	class ReceptionException : public std::exception {};
+	class CloseConnectionException : public std::exception {};
+
+	//TUDO BOILERPLATE PQ C++ N SABE SE COMPORTAR
+	//na real é definindo os construtores de cada sub estrutura, 
+	//colocando em um namespace _inner para n poluir o header
 	namespace _inner{
 		struct t_response {
+			t_response(Net::Status status, const char* msg): status(status), msg(msg){};
+
 			Net::Status status;
-			std::string msg;	
+			::std::string msg;	
 		};
 		struct t_filemeta {
+			t_filemeta(uint64_t id, uint64_t size, const char* name): 
+				id(id), size(size), name(name){};
+
 			uint64_t id;
 			uint64_t size;
-			std::string name;
+			::std::string name;
 		};
 		struct t_filedata{
+			t_filedata(int file): file(file){}
+
 			int file; //TODO: file descriptor (schenenigans)
 		};
 
 		union t_payload {
-			t_payload(){ 
-				memset( this, 0, sizeof( t_payload ) ); 
-			}
+			t_payload(){ memset( this, 0, sizeof( t_payload ) ); }
+			t_payload(const char* str): text(str){}
+			t_payload(Net::Status status, const char* msg): response(status, msg){}
+			t_payload(uint64_t id, uint64_t size, const char* name): filemeta(id, size, name){} 
+			t_payload(int file): filedata(file){}
+
 			~t_payload(){}
 			t_filedata filedata;
 			t_filemeta filemeta;
 			t_response response;
-			std::string text;
+			::std::string text;
 		};
 	};
 
 	class PayloadData {
 		public:
 			PayloadData(Net::Operation op): operation_type(op){}
-			PayloadData(Net::Operation op, std::string& text): operation_type(op){
-				payload.text = text;
-			}
-			PayloadData(Net::Status status, std::string& msg): operation_type(Net::Operation_Response){
-				payload.response.status = status;
-				payload.response.msg = msg;
-			}
-			PayloadData(u_int32_t id, u_int32_t size, std::string& name): operation_type(Net::Operation_FileMeta){
-				payload.filemeta.id = id;
-				payload.filemeta.size = size;
-				payload.filemeta.name = name;
-			}
-			PayloadData(int f): operation_type(Net::Operation_FileData){
-				payload.filedata.file = f;
-			}
+			PayloadData(Net::Operation op, const char* text): 
+				operation_type(op), payload(text){}
+			PayloadData(Net::Status status, const char* msg): 
+				operation_type(Net::Operation_Response), payload(status, msg){}
+			PayloadData(uint64_t id, uint64_t size, const char* name):
+				operation_type(Net::Operation_FileMeta), payload(id, size, name){}
+			PayloadData(int f): 
+				operation_type(Net::Operation_FileData), payload(f){}
 
 			Net::Operation operation_type;
 			_inner::t_payload payload;
@@ -158,5 +162,6 @@ namespace net{
 			int fd = -1;
 	};
 };
+
 
 #endif
