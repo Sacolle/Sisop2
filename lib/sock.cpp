@@ -75,31 +75,27 @@ namespace net{
 			throw TransmissionException(); 
 		}
 	}
-	#define READ_BUFFER_SIZE 1024
-	#define SOCKET_READ_ATTEMPS 3
 
 	//reads the whole packet, and returns the data associated with it
 	std::unique_ptr<PayloadData> Socket::read_operation(){
-		u_int8_t buff[READ_BUFFER_SIZE]; //NOTE: is there a better way or this is fine?
-		
 		builder.Clear();
-		bzero(buff, READ_BUFFER_SIZE);
+		bzero(read_buff, READ_BUFFER_SIZE);
 
-		int read_bytes = read(buff, READ_BUFFER_SIZE);
+		int read_bytes = read(read_buff, READ_BUFFER_SIZE);
 		int tries = SOCKET_READ_ATTEMPS;
 
-		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(buff);
+		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(read_buff);
 		
 		//enquanto n ler todos os bytes esperados do pacote, append no buffers os bytes chegando
 		while(read_bytes < expected_msg_size && tries > 0){
-			read_bytes += read(buff + read_bytes, READ_BUFFER_SIZE - read_bytes);
+			read_bytes += read(read_buff + read_bytes, READ_BUFFER_SIZE - read_bytes);
 			tries--;
 		}
 		if(read_bytes != expected_msg_size){
 			throw TransmissionException();
 		}
 
-		auto msg = Net::GetSizePrefixedPacket(buff);
+		auto msg = Net::GetSizePrefixedPacket(read_buff);
 
 		switch (msg->op_type()){
 		case Net::Operation_Connect: {
@@ -252,8 +248,13 @@ namespace net{
 			break;
 		}
 		if (p == NULL) {
+			fd = -1;
 			throw NetworkException("Server Failed to connect");
 		}
 		freeaddrinfo(servinfo); // all done with this structure
+	}
+
+	std::unique_ptr<Socket> ClientSocket::build(){
+		return std::make_unique<Socket>(fd);
 	}
 };

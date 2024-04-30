@@ -8,7 +8,7 @@
 #define IP "127.0.0.1"
 #define PORT "20001"
 
-
+/*
 void echo(std::unique_ptr<net::Socket> s){
 	char buff[256];
 	flatbuffers::FlatBufferBuilder builder;
@@ -47,20 +47,37 @@ void echo(std::unique_ptr<net::Socket> s){
 	auto payload = static_cast<const Net::Response*>(msg->op());
 	std::cout << "Reposta legal " << payload->msg()->str() << std::endl;
 }
+*/
+
+void basic_op(std::unique_ptr<net::Socket> socket){
+	std::string nome("pedro");
+	try{
+		socket->send_connect(nome);
+		auto response = socket->read_operation();
+
+		if(response->operation_type != Net::Operation_Response){
+			std::cerr << "erro no teste, operação enviada errada" << std::endl;
+			exit(2);
+		}
+		std::cout << "reposta do servidor: " << response->payload.response.msg << std::endl;
+	}catch(const net::TransmissionException& e){
+		std::cerr << "erro na execução das funções " << std::endl;
+	}
+}
 
 
 int main() {
-	auto socket = std::make_unique<net::ClientSocket>();
+	net::ClientSocket socket;
 
 	try{
-		socket->connect(IP, PORT);
+		socket.connect(IP, PORT);
 	}
 	catch(const net::NetworkException& e){
 		std::cerr << e.what() << '\n';
 		exit(1);
 	}
 
-	echo(std::move(socket));
+	basic_op(socket.build());
     return 0;
 }
 

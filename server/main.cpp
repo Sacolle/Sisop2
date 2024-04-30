@@ -7,6 +7,7 @@
 #define PORT "20001"
 #define BACKLOG 10
 
+/*
 void echo(std::unique_ptr<net::Socket> s){
 	char buff[256];
 	flatbuffers::FlatBufferBuilder builder;
@@ -53,6 +54,25 @@ void echo(std::unique_ptr<net::Socket> s){
 		}
 	}
 }
+*/
+void laco(std::unique_ptr<net::Socket> socket){
+	while(1){
+		try{
+			auto data = socket->read_operation();
+
+			if(data->operation_type != Net::Operation_Connect){
+				std::cerr << "erro no teste, operação enviada errada" << std::endl;
+				exit(2);
+			}
+			std::cout << "Cliente connectado: " << data->payload.text << std::endl;
+			std::string res("Conectado corretamente!");
+			socket->send_response(Net::Status_Ok, res);
+		}catch(const net::TransmissionException& e){
+			std::cerr << "erro na execução das funções " << std::endl;
+			exit(2);
+		}
+	}
+}
 
 
 int main() {
@@ -70,7 +90,7 @@ int main() {
 		try {
 			auto s = socket.accept();
 			s->print_their_info();
-			echo(std::move(s));
+			laco(std::move(s));
 		}catch(const net::NetworkException& e){
 			std::cerr << e.what() << '\n';
 		}
