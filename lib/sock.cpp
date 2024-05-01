@@ -44,9 +44,9 @@ namespace net{
 	}
 	void Socket::send_download(std::string& filename){
 		builder.Clear();
-
-		auto dowload = Net::CreateDownload(builder, builder.CreateString(filename));
-		auto packet = Net::CreatePacket(builder, Net::Operation_Download, dowload.Union());
+		// dowload
+		auto download = Net::CreateDownload(builder, builder.CreateString(filename));
+		auto packet = Net::CreatePacket(builder, Net::Operation_Download, download.Union());
 		builder.FinishSizePrefixed(packet);
 
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
@@ -96,23 +96,23 @@ namespace net{
 		uint64_t size = file->tellg();
 		std::cout << "file size is " << size << std::endl;
 
-		uint64_t id = get_fileid();
 
 		//call send_filemeta (id, size, name)
 		try{
-			send_filemeta(id, size, filename);
+			send_filemeta(size, filename);
 		}catch(const std::exception& e){
 			std::cerr << e.what() << '\n';
 			//TODO: what do if fail? close connection?
 		}
 		//call send_filedata (id, size, ifstream);
 		//if throws, pipe up
-		send_filedata(id, std::move(file));
+		file->seekg(0); 
+		send_filedata(filename, std::move(file));
 	}
-	void Socket::send_filemeta(uint64_t id, uint64_t size, std::string& filename){
+	void Socket::send_filemeta(uint64_t size, std::string& filename){
 		builder.Clear();
 
-		auto response = Net::CreateFileMeta(builder, id, builder.CreateString(filename), size);
+		auto response = Net::CreateFileMeta(builder, builder.CreateString(filename), size);
 		auto packet = Net::CreatePacket(builder, Net::Operation_FileMeta, response.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -122,26 +122,26 @@ namespace net{
 			throw TransmissionException(Net::Operation_FileMeta); //incomplete message
 		}
 	}
-	void Socket::send_filedata(uint64_t id, std::unique_ptr<std::ifstream> file){
+	void Socket::send_filedata(std::string& filename, std::unique_ptr<std::ifstream> file){
 		std::vector<uint8_t> buff(512, 0);
 		while(!file->eof()){
 			file->read((char*)buff.data(), buff.size());
 			//NOTE: data_size -> uint64_t da merda?
 			std::streamsize data_size = file->gcount();
-			//got the chunck
-			send_filedata_chunck(id, data_size, buff);
+			//got the chunk
+			send_filedata_chunk(filename, data_size, buff);
 		}
 	}
 
-	void Socket::send_filedata_chunck(uint64_t id, uint64_t chunk_size, std::vector<uint8_t>& chunk){
+	void Socket::send_filedata_chunk(std::string& name_file, uint64_t chunk_size, std::vector<uint8_t>& chunk){
 		builder.Clear();
 
-		auto filedata = Net::CreateFileData(builder, id, builder.CreateVector(chunk.data(), chunk_size));
+		auto filedata = Net::CreateFileData(builder, builder.CreateString(name_file), builder.CreateVector(chunk.data(), chunk_size));
 		auto packet = Net::CreatePacket(builder, Net::Operation_FileData, filedata.Union());
 		builder.FinishSizePrefixed(packet);
 
 		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
-
+		std::cout << "sent:" << sent_bytes << std::endl; 
 		if(sent_bytes != builder.GetSize()){
 			throw TransmissionException(Net::Operation_FileData); //incomplete message
 		}
@@ -150,30 +150,33 @@ namespace net{
 	//reads the whole packet, and returns the data associated with it
 	std::unique_ptr<PayloadData> Socket::read_operation(){
 		builder.Clear();
-		bzero(read_buff, READ_BUFFER_SIZE);
+		bzero(read_buff, HEADER_SIZE);	
 
-		int read_bytes = read(read_buff, READ_BUFFER_SIZE);
+		int read_bytes = recv(read_buff, HEADER_SIZE);
 		if(read_bytes == 0){
 			throw CloseConnectionException(); //closed connection
 		}
-		int tries = SOCKET_READ_ATTEMPS;
+		int tries = SOCKET_READ_ATTEMPTS;
 
 		auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(read_buff);
 		
 		//enquanto n ler todos os bytes esperados do pacote, append no buffers os bytes chegando
 		while(read_bytes < expected_msg_size && tries > 0){
-			read_bytes += read(read_buff + read_bytes, READ_BUFFER_SIZE - read_bytes);
+			read_bytes += recv(read_buff + read_bytes, expected_msg_size - read_bytes);
 			tries--;
 		}
 		if(read_bytes != expected_msg_size){
-			throw ReceptionException(); //incomplete message
+			std::cout << "Lido: " << read_bytes << std::endl;
+			std::cout << "Tries: " << tries << std::endl; 
+			std::cout << "Esperado: " << expected_msg_size << std::endl; 
+			throw ReceptionException("read_bytes != expected_msg_size"); //incomplete message
 		}
 
 		auto msg = Net::GetSizePrefixedPacket(read_buff);
 
 		switch (msg->op_type()){
 		case Net::Operation_Connect: {
-			auto payload = static_cast<const Net::Connect*>(msg->op());
+			auto payload = msg->op_as_Connect();
 			return std::make_unique<PayloadData>(
 				Net::Operation_Connect, 
 				payload->username()->c_str()
@@ -183,45 +186,68 @@ namespace net{
 			return std::make_unique<PayloadData>(Net::Operation_ListFiles);
 		} break;
 		case Net::Operation_Download: {
-			auto payload = static_cast<const Net::Download*>(msg->op());
+			auto payload = msg->op_as_Download();
 			return std::make_unique<PayloadData>(
 				Net::Operation_Download, 
 				payload->filename()->c_str()
 			);
 		} break;
 		case Net::Operation_Delete: {
-			auto payload = static_cast<const Net::Delete*>(msg->op());
+			auto payload = msg->op_as_Delete();
 			return std::make_unique<PayloadData>(
 				Net::Operation_Delete, 
 				payload->filename()->c_str()
 			);
 		} break;
 		case Net::Operation_Response: {
-			auto payload = static_cast<const Net::Response*>(msg->op());
+			auto payload = msg->op_as_Response();
 			return std::make_unique<PayloadData>(
 				payload->status(),
 				payload->msg()->c_str()
 			);
 		} break;
 		case Net::Operation_FileMeta: {
-			auto payload = static_cast<const Net::FileMeta*>(msg->op());
+			auto payload = msg->op_as_FileMeta();
 			return std::make_unique<PayloadData>(
-				payload->id(),
 				payload->size(),
 				payload->name()->c_str()
 			);
 		} break;
 		case Net::Operation_FileData: 
-			//TODO: throw errror, pq essa operação n vai acontecer aqui, e sim fora
-			// primeiro faz um read_operation
-			// se o PayloadData retorna com um FileMeta
-			// chama o read_and_save_file
-			return std::make_unique<PayloadData>(3);
+		{
+			auto payload = msg->op_as_FileData();
+			return std::make_unique<PayloadData>(*payload); 
+
 			break;
+		}
 		default:
 			//didn't match any operation known
-			throw ReceptionException();
+			throw ReceptionException("didn't match any operation known");
 		}
+	}
+
+	void Socket::receive_file(std::string& filename, uint64_t size){
+		/* Cria um arquivo temporário e escreve nele, para proteger o arquivo de uma perda de conexão */
+		std::string filename_temp = filename + "_temp";
+		std::ofstream f(filename_temp, std::ios::binary);
+		int read_bytes = 0;
+		while (read_bytes < size){
+			std::unique_ptr<PayloadData> packet = read_operation(); 
+			// Meus->Parabens.Colle.!
+			// Isso é a insanidade em uma linha de código CPP
+			auto buf =  packet.get()->payload.filedata.fd.data();
+			int buf_size = buf->size();
+			read_bytes += buf_size;
+			f.write((char*)buf->data(), buf_size);
+			std::cout << "Lido: " << read_bytes << std::endl; 
+		}
+		
+		f.close();
+
+		/* Substitui o arquivo pelo arquivo temporário */
+		//std::rename(filename_temp.c_str(), filename.c_str()); 
+
+
 	}
 
 	void Socket::print_their_info(){

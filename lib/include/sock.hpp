@@ -16,8 +16,8 @@
 
 #define FLATBUFFER_DEFAULT_SIZE 1024
 #define READ_BUFFER_SIZE 1024
-#define SOCKET_READ_ATTEMPS 3
-
+#define SOCKET_READ_ATTEMPTS 3
+#define HEADER_SIZE sizeof(u_int32_t)
 namespace net{
 	class NetworkException : public std::runtime_error{
 		public:
@@ -28,13 +28,17 @@ namespace net{
 			TransmissionException(Net::Operation type): type(type){}
 			Net::Operation type;
 	};
-	class ReceptionException : public std::exception {};
+	class ReceptionException : public std::runtime_error {
+		public:
+			ReceptionException(const std::string& what) : std::runtime_error(what){}
+	};
 	class CloseConnectionException : public std::exception {};
 
 	//TUDO BOILERPLATE PQ C++ N SABE SE COMPORTAR
 	//na real é definindo os construtores de cada sub estrutura, 
 	//colocando em um namespace _inner para n poluir o header
 	namespace _inner{
+
 		struct t_response {
 			t_response(Net::Status status, const char* msg): status(status), msg(msg){};
 
@@ -42,25 +46,25 @@ namespace net{
 			::std::string msg;	
 		};
 		struct t_filemeta {
-			t_filemeta(uint64_t id, uint64_t size, const char* name): 
-				id(id), size(size), name(name){};
+			t_filemeta(uint64_t size, const char* name): 
+				size(size), name(name){};
 
-			uint64_t id;
 			uint64_t size;
 			::std::string name;
 		};
 		struct t_filedata{
-			t_filedata(int file): file(file){}
+			t_filedata(const Net::FileData& _fd): fd(_fd) {};
 
-			int file; //TODO: file descriptor (schenenigans)
+			const Net::FileData& fd;
+
 		};
 
 		union t_payload {
 			t_payload(){ memset( this, 0, sizeof( t_payload ) ); }
 			t_payload(const char* str): text(str){}
 			t_payload(Net::Status status, const char* msg): response(status, msg){}
-			t_payload(uint64_t id, uint64_t size, const char* name): filemeta(id, size, name){} 
-			t_payload(int file): filedata(file){}
+			t_payload(uint64_t size, const char* name): filemeta(size, name){} 
+			t_payload(const Net::FileData& fd) : filedata(fd) {};
 
 			~t_payload(){}
 			t_filedata filedata;
@@ -73,6 +77,7 @@ namespace net{
 	//tomar muito cuidado quando fazer multi thread
 	uint64_t get_fileid();
 
+
 	class PayloadData {
 		public:
 			PayloadData(Net::Operation op): operation_type(op){}
@@ -80,10 +85,10 @@ namespace net{
 				operation_type(op), payload(text){}
 			PayloadData(Net::Status status, const char* msg): 
 				operation_type(Net::Operation_Response), payload(status, msg){}
-			PayloadData(uint64_t id, uint64_t size, const char* name):
-				operation_type(Net::Operation_FileMeta), payload(id, size, name){}
-			PayloadData(int f): 
-				operation_type(Net::Operation_FileData), payload(f){}
+			PayloadData(uint64_t size, const char* name):
+				operation_type(Net::Operation_FileMeta), payload(size, name){}
+			PayloadData(const Net::FileData& file_data):
+				operation_type(Net::Operation_FileData), payload(file_data){}
 
 			Net::Operation operation_type;
 			_inner::t_payload payload;
@@ -109,12 +114,14 @@ namespace net{
 			~Socket(){
 				close(fd);
 			}
-			inline int read(void *buf, int len){
+			inline int recv(void *buf, int len){
 				return ::recv(fd, buf, len, 0);
 			}
 			inline int send(const void *msg, int len){
 				return ::send(fd, msg, len, 0);
 			}
+			int send_checked(void *buf, int len);
+			Net::Operation recv_flatbuffer(void *buf, int len);
 			inline void set_username(std::string n){ username = std::move(n); }
 
 			void print_their_info();
@@ -131,14 +138,15 @@ namespace net{
 		
 			std::unique_ptr<PayloadData> read_operation();
 			void read_and_save_file(std::string& filename, uint64_t id, uint64_t size); //TODO:
+			void receive_file(std::string& filename, uint64_t size);
 
 		protected:
 			int fd = 0;
 		private:
 
-			void send_filemeta(uint64_t id, uint64_t size, std::string& filename);
-			void send_filedata(uint64_t id, std::unique_ptr<std::ifstream> file);
-			void send_filedata_chunck(uint64_t id, uint64_t chunk_size, std::vector<uint8_t>& chunk);
+			void send_filemeta(uint64_t size, std::string& filename);
+			void send_filedata(std::string& filename, std::unique_ptr<std::ifstream> file);
+			void send_filedata_chunk(std::string& filename, uint64_t chunk_size, std::vector<uint8_t>& chunk);
 
 			std::string username;
 			std::string their_ip;

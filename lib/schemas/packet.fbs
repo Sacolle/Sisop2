@@ -1,5 +1,3 @@
-//Example IDL file for our monster's schema.
- 
 namespace Net;
 
 union Operation { 
@@ -24,14 +22,13 @@ table Connect {
 }
 
 table FileMeta {
-	id: ulong; 		//id for ease to test if data is from file
 	name: string;
 	size: ulong;		//total size of the file
 	// -- other stuff
 }
 
 table FileData {
-	id: ulong;
+	name: string;
 	// -- other stuff
 	data: [ubyte]; //chunck of data
 }
