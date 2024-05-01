@@ -8,7 +8,9 @@
 #include <sys/types.h>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include <memory>
+#include <fstream>
 
 #include "packet_generated.h"
 
@@ -67,6 +69,9 @@ namespace net{
 			::std::string text;
 		};
 	};
+	//NOTE: implementação de ids únicos,
+	//tomar muito cuidado quando fazer multi thread
+	uint64_t get_fileid();
 
 	class PayloadData {
 		public:
@@ -122,16 +127,18 @@ namespace net{
 			void send_listfiles();
 			void send_download(std::string& filename);
 			void send_delete(std::string& filename);
-			void send_response(Net::Status status, std::string& msg); //define type enum
+			void send_response(Net::Status status, std::string& msg); 
 		
 			std::unique_ptr<PayloadData> read_operation();
+			void read_and_save_file(std::string& filename, uint64_t id, uint64_t size);
 
 		protected:
 			int fd = 0;
 		private:
-			//TODO: implementações de mandar os metadados e o chunk de arquivo
-			void send_filemeta();
-			void send_filedata();
+
+			void send_filemeta(uint64_t id, uint64_t size, std::string& filename);
+			void send_filedata(uint64_t id, std::unique_ptr<std::ifstream> file);
+			void send_filedata_chunck(uint64_t id, uint64_t chunk_size, std::vector<uint8_t>& chunk);
 
 			std::string username;
 			std::string their_ip;

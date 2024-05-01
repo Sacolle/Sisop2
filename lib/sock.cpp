@@ -6,8 +6,16 @@
 
 #include <cerrno>
 #include <iostream>
+#include <ios>
 
 namespace net{
+	//NOTE: implementação de ids únicos,
+	//tomar muito cuidado quando fazer multi thread
+	uint64_t g_fileid_base = 0;
+	uint64_t get_fileid(){
+		return g_fileid_base++;
+	}
+
 	void Socket::send_connect(std::string& username){
 		builder.Clear();
 
@@ -73,6 +81,69 @@ namespace net{
 
 		if(sent_bytes != builder.GetSize()){
 			throw TransmissionException(Net::Operation_Response); //incomplete message
+		}
+	}
+	//throws `net::TransmissionException`, 
+	// `net::CloseConnectionException` and 
+	// `std::ios_base::failure`
+	void Socket::send_file(std::string& filename){
+		//open the file, get size 
+		auto file = std::make_unique<std::ifstream>(filename, std::ios::binary | std::ios::ate);
+		if(!file->is_open()){
+			//TODO: except for this
+			throw std::ios_base::failure("Falha em abrir o arquivo");
+		}
+		uint64_t size = file->tellg();
+		std::cout << "file size is " << size << std::endl;
+
+		uint64_t id = get_fileid();
+
+		//call send_filemeta (id, size, name)
+		try{
+			send_filemeta(id, size, filename);
+		}catch(const std::exception& e){
+			std::cerr << e.what() << '\n';
+			//TODO: what do if fail? close connection?
+		}
+		//call send_filedata (id, size, ifstream);
+		//if throws, pipe up
+		send_filedata(id, std::move(file));
+	}
+	void Socket::send_filemeta(uint64_t id, uint64_t size, std::string& filename){
+		builder.Clear();
+
+		auto response = Net::CreateFileMeta(builder, id, builder.CreateString(filename), size);
+		auto packet = Net::CreatePacket(builder, Net::Operation_FileMeta, response.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(Net::Operation_FileMeta); //incomplete message
+		}
+	}
+	void Socket::send_filedata(uint64_t id, std::unique_ptr<std::ifstream> file){
+		std::vector<uint8_t> buff(512, 0);
+		while(!file->eof()){
+			file->read((char*)buff.data(), buff.size());
+			//NOTE: data_size -> uint64_t da merda?
+			std::streamsize data_size = file->gcount();
+			//got the chunck
+			send_filedata_chunck(id, data_size, buff);
+		}
+	}
+
+	void Socket::send_filedata_chunck(uint64_t id, uint64_t chunk_size, std::vector<uint8_t>& chunk){
+		builder.Clear();
+
+		auto filedata = Net::CreateFileData(builder, id, builder.CreateVector(chunk.data(), chunk_size));
+		auto packet = Net::CreatePacket(builder, Net::Operation_FileData, filedata.Union());
+		builder.FinishSizePrefixed(packet);
+
+		int sent_bytes = send(builder.GetBufferPointer(), builder.GetSize());
+
+		if(sent_bytes != builder.GetSize()){
+			throw TransmissionException(Net::Operation_FileData); //incomplete message
 		}
 	}
 
