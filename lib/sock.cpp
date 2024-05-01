@@ -212,7 +212,10 @@ namespace net{
 			);
 		} break;
 		case Net::Operation_FileData: 
-			//TODO:
+			//TODO: throw errror, pq essa operação n vai acontecer aqui, e sim fora
+			// primeiro faz um read_operation
+			// se o PayloadData retorna com um FileMeta
+			// chama o read_and_save_file
 			return std::make_unique<PayloadData>(3);
 			break;
 		default:
