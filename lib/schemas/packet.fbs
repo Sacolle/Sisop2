@@ -6,9 +6,11 @@ union Operation {
 	// operations
 	Connect,
 	ListFiles,
+	Exit,
 	Download,
 	Delete,
-	Response
+	Response,
+	Ping
 }
  
 table Packet {
@@ -16,9 +18,18 @@ table Packet {
 	//that is to see if it sent it whole packet, that it did not fragment
 	op: Operation;
 }
+table Ping {}
+
+enum ChannelType: ubyte { Main, FileWatch, Relay }
 
 table Connect {
+	id: ulong;
+	type: ChannelType;
 	username: string;
+	//TODO: add type: 
+	// - main -> for client cmd req to server reply
+	// - side -> for client file watch req to server reply
+	// - sync -> for server relay file update to clinet reply 
 }
 
 table FileMeta {
@@ -28,13 +39,15 @@ table FileMeta {
 }
 
 table FileData {
-	name: string;
 	// -- other stuff
 	data: [ubyte]; //chunck of data
 }
 
-table ListFiles {
-}
+table ListFiles {}
+
+table Exit {}
+
+//TODO: add exit
 
 table Download {
 	filename: string;
