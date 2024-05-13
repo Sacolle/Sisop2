@@ -5,12 +5,38 @@
 #include <fstream>
 #include <ios>
 #include <memory>
+#include <vector>
 
 #include "packet_generated.h"
 #include "sock.hpp"
 #include "serializer.hpp"
 
 namespace net{
+	class SyncFile {
+		public:
+			//opens a file in the dir_name, which is the username of 'file_sync'
+			void open_recv(const std::string& _filename, const std::string& dir_name);
+			//opens a file, 
+			ssize_t open_read(const std::string& _filename, const std::string& dir_name);
+			ssize_t open_read(const std::string& _filename);
+
+			ssize_t read(const std::vector<uint8_t>& buff);
+			void write(const uint8_t* buff, const size_t size);
+			inline bool eof(){ return file.eof(); }
+			//rename cannot happen when a file is being read
+			//the controler needs to acount for that
+			void finish_and_rename();
+			void finish();
+		private:
+			ssize_t _open_read();
+
+			std::string tmp_filename;
+			std::string filename;
+			std::fstream file;
+
+			static const size_t RANDOM_NAME_SIZE = 32; 
+		};
+
 	class Payload {
 		public:
 			Payload(Net::Operation op): operation_type(op){}
@@ -42,7 +68,8 @@ namespace net{
 	class Upload : public Payload {
 		public:
 			//opens the file for the request
-			Upload(const char* filename, const uint64_t file_size = 0);
+			Upload(const char* filename);
+			Upload(const char* filename, uint64_t file_size);
 			//size(size), filename(filename), Payload(Net::Operation_FileMeta)
 
 			//read the file and sends the packets 
@@ -53,7 +80,24 @@ namespace net{
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 		private:
 			const std::string filename;
-			std::fstream file;
+			SyncFile file;
+			uint64_t size;
+	};
+	//lida com IO
+	class Download : public Payload {
+		public:
+			//dir_name is the username or 'sync_dir' 
+			Download(const char* filename);
+
+			//sends the name of the file to be downloaded
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//opens the file (if it has), and sends the meta + chunks of data
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+			//awaits for the file and saves it
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+		private:
+			const std::string filename;
+			SyncFile file;
 			uint64_t size;
 	};
 	//NOTE: creio q esse pckt nunca vai ser recebido seco, puro, se sim its a dokie
@@ -123,24 +167,6 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for an ok
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
-	};
-	//lida com IO
-	class Download : public Payload {
-		public:
-			//
-			Download(const char* filename, const bool clean_file);
-			// filename(filename), file(filename, std::ios::binary | std::ios::ate), Payload(Net::Operation_Download);
-
-			//sends the name of the file to be downloaded
-			void send(Serializer& serde, std::shared_ptr<Socket> socket);
-			//opens the file (if it has), and sends the meta + chunks of data
-			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
-			//awaits for the file and saves it
-			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
-		private:
-			const std::string filename;
-			std::fstream file;
-			uint64_t size;
 	};
 	//lida com IO
 	class Delete : public Payload {

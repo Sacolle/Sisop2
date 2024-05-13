@@ -40,36 +40,32 @@
 //faz o inicio da conexão, 
 //checando o número de pessoas conectadas (max 2)
 //e setando o nome do user dessa socket
-void initial_handshake(){
-	bool isConnected = false; // solução temporária -> Supõe-se que não vai funcionar pra múltiplos clientes/threads
-	/*
-	if(!isConnected && data->operation_type != Net::Operation_Connect){
-		std::cerr << "Servidor: erro no teste, primeira operação enviada não é um Connect" << std::endl;
-		exit(2);
-	} else if (!isConnected) {
-		isConnected = true;
-		std::cout << "Cliente connectado: " << data->payload.text << std::endl;
-		std::string res("Conectado corretamente!");
-		socket->send_response(Net::Status_Ok, res);
-	}
-	std::cout << (int)data->operation_type << std::endl; 
-	if ( data->operation_type == Net::Operation_FileMeta ){
-		socket->receive_file(data->payload.filemeta.name, data->payload.filemeta.size); 
-	}*/
+void initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket){
+	
+	//check num of conections
+	auto buff = socket->read_full_pckt();
+	auto pckt = serde.parse_expect(buff, Net::Operation_Connect);
+	auto connect_raw = pckt->op_as_Connect();
+	net::Connect connect(
+		connect_raw->username()->c_str(), 
+		connect_raw->type(), 
+		connect_raw->id()
+	);
+	connect.reply(serde, socket);
 }
 
-std::unique_ptr<net::Payload> parse_payload_from_buff(uint8_t* buff){
+std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 	auto msg = Net::GetSizePrefixedPacket(buff);
 
 	switch (msg->op_type()){
-	case Net::Operation_Connect: {
+	/*case Net::Operation_Connect: {
 		auto payload = msg->op_as_Connect();
 		return std::make_unique<net::Connect>(
 			payload->username()->c_str(),
 			payload->type(),
 			payload->id()
 		);
-	} break;
+	} break;*/
 	case Net::Operation_ListFiles: {
 		return std::make_unique<net::ListFiles>();
 	} break;
@@ -82,8 +78,7 @@ std::unique_ptr<net::Payload> parse_payload_from_buff(uint8_t* buff){
 	case Net::Operation_Download: {
 		auto payload = msg->op_as_Download();
 		return std::make_unique<net::Download>(
-			payload->filename()->c_str(),
-			false //it's not a clean file, cuz when receiving a dowload req, it has the file to send (is server)
+			payload->filename()->c_str()
 		);
 	} break;
 	case Net::Operation_Delete: {
@@ -94,6 +89,7 @@ std::unique_ptr<net::Payload> parse_payload_from_buff(uint8_t* buff){
 	} break;
 	case Net::Operation_FileMeta: {
 		auto payload = msg->op_as_FileMeta();
+		std::cout << "filemeta" << std::endl;
 		return std::make_unique<net::Upload>(
 			payload->name()->c_str(),
 			payload->size()
@@ -110,28 +106,39 @@ std::unique_ptr<net::Payload> parse_payload_from_buff(uint8_t* buff){
 	//NOTE: could make a trycatch which cathes and sends the error after
 }
 
-
-
 void server_loop(std::shared_ptr<net::Socket> socket){
 	net::Serializer serde;
 	try{
-		initial_handshake();
+		initial_handshake(serde, socket);
 	}catch(...){
-		//deal if fails to connect -> response
+		std::cout << "failed to initialize connection" << '\n';
+		exit(1);
 	}
 	
 	while(1){
 		try{
 			auto buff = socket->read_full_pckt();
-			auto payload = parse_payload_from_buff(buff);
+			auto payload = parse_payload(buff);
 			std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
 			payload->reply(serde, socket);
 		}catch(const net::CloseConnectionException& e){
 			std::cerr << "Cliente desconectado" << std::endl;
 			exit(1);
 		}catch(const net::ReceptionException& e){
-			// TODO: Consertar erro ao enviar um arquivo com 0 bytes
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
+			//TODO: await a bit, flush the socket and send a ping to see if its ok
+		}catch(const std::ios_base::failure& e){
+			try {
+				auto err_response = serde.build_response(Net::Status_Error, e.what());
+				socket->send_checked(err_response);
+			}catch(const net::CloseConnectionException& e){
+				std::cerr << "Cliente desconectado" << std::endl;
+				exit(1);
+			}catch(const std::exception& e){
+				std::cout << e.what() << '\n';
+			}
+		}catch(...){
+			std::cout << "idk man maybe" << std::endl;
 		}
 	}
 
@@ -151,7 +158,7 @@ int main() {
 	while(1){
 		try {
 			auto s = socket.accept();
-			s->print_their_info();
+			s->print_address();
 			server_loop(s);
 		}catch(const net::NetworkException& e){
 			std::cerr << e.what() << '\n';

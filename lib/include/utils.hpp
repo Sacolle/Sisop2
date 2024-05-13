@@ -3,6 +3,7 @@
 
 #include <string>
 #include <algorithm> 
+#include <random>
 #include <cctype>
 #include <locale>
 
@@ -33,7 +34,14 @@ namespace utils {
 		const size_t pos = pos_of_slash == std::string::npos ? 0 : (pos_of_slash + 1);
 		return s.substr(pos, s.size() - pos);
 	}
+	inline std::string get_file_extension(const std::string &s){
+		const size_t pos_of_dot = s.find_first_of('.');
+		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
+		return s.substr(pos, s.size() - pos);
+	}
 
+
+	std::string generate_random_alphanumeric_string(std::size_t len);
 	const char* pckt_type_to_name(Net::Operation op);
 }
 

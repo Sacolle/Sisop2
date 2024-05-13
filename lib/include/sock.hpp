@@ -11,7 +11,7 @@
 #include <memory>
 #include <fstream>
 
-#include "flatbuffers/flatbuffers.h"
+#include "packet_generated.h"
 
 #include "exceptions.hpp"
 
@@ -30,10 +30,17 @@ namespace net{
 				bzero(read_buff, READ_BUFFER_SIZE);
 			}
 			~Socket() noexcept { close(fd); }
-			void print_their_info();
+			void print_address();
+
+			void set_connection_info(const std::string& username, 
+				const uint64_t user_id, const Net::ChannelType channel_type);
+			inline std::string& get_username() { return username; }
+			inline uint64_t get_user_id() { return user_id; }
+			inline Net::ChannelType get_channel_type() { return channel_type; }
+
+			
 			void send_checked(const void *buf, const int len);
 			void send_checked(flatbuffers::FlatBufferBuilder *buff);
-
 			uint8_t* read_full_pckt();
 		private:
 			inline int recv(void *buf, const int len) noexcept { return ::recv(fd, buf, len, 0); }
@@ -44,6 +51,10 @@ namespace net{
 			uint16_t their_port;
 			uint8_t read_buff[READ_BUFFER_SIZE];
 
+			//NOTE: poderia ser em uma estrutura separada, porém faz mais sentido o id, nome e tipo estar aqui
+			std::string username;
+			uint64_t user_id;
+			Net::ChannelType channel_type;
 	};
 	class ServerSocket{
 		public:
