@@ -8,6 +8,7 @@ namespace utils {
 		switch (op){
 			ENUM_TO_STR_CASE(Net::Operation_Connect);
 			ENUM_TO_STR_CASE(Net::Operation_FileMeta);
+			ENUM_TO_STR_CASE(Net::Operation_SendFileRequest);
 			ENUM_TO_STR_CASE(Net::Operation_FileData);
 			ENUM_TO_STR_CASE(Net::Operation_ListFiles);
 			ENUM_TO_STR_CASE(Net::Operation_Exit);

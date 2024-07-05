@@ -2,12 +2,12 @@
 #include "serializer.hpp"
 #include "exceptions.hpp"
 #include "utils.hpp"
+#include "defines.hpp"
 
 #include <iostream>
-#define FB_BUFFER_SIZE 1024
 
 namespace net{
-	Serializer::Serializer(): builder(FB_BUFFER_SIZE){}
+	Serializer::Serializer(): builder(FB_BUFFSIZE){}
 
 	const Net::Packet* Serializer::parse(uint8_t* pckt){
 		return Net::GetSizePrefixedPacket(pckt);
@@ -41,6 +41,7 @@ namespace net{
 		return &builder;
 	}
 	FlatBufferBuilder* Serializer::build_exit(){
+		//TODO:
 		return &builder;
 	}
 	FlatBufferBuilder* Serializer::build_filemeta(std::string const& filename, uint64_t size){
@@ -48,6 +49,15 @@ namespace net{
 
 		auto filemeta = Net::CreateFileMeta(builder, builder.CreateString(filename), size);
 		auto packet = Net::CreatePacket(builder, Net::Operation_FileMeta, filemeta.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+	}
+	FlatBufferBuilder* Serializer::build_sendfilerequest(std::string const& filename, uint64_t hash){
+		builder.Clear();
+
+		auto filemeta = Net::CreateSendFileRequest(builder, builder.CreateString(filename), hash);
+		auto packet = Net::CreatePacket(builder, Net::Operation_SendFileRequest, filemeta.Union());
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;

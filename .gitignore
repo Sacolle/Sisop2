@@ -1,2 +1,6 @@
 .vscode
 build
+
+#test files
+100MB.bin
+big.txt

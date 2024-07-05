@@ -83,6 +83,24 @@ namespace net{
 			SyncFile file;
 			uint64_t size;
 	};
+
+	class SendFileRequest : public Payload {
+		public:
+			//opens the file for the request
+			SendFileRequest(const char* filename);
+			SendFileRequest(const char* filename, uint64_t hash);
+
+			//read the file and sends the packets 
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//receives the packets and writes to file
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+			//awaits for ok or err pkct
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+		private:
+			const std::string filename;
+			SyncFile file;
+			uint64_t hash;
+	};
 	//lida com IO
 	class Download : public Payload {
 		public:

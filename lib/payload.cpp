@@ -4,6 +4,8 @@
 #include <cstdio>
 
 #include "utils.hpp"
+#include "defines.hpp"
+#include "komihash.h"
 
 namespace net {
 	void SyncFile::open_recv(const std::string& _filename, const std::string& dir_name){
@@ -89,7 +91,7 @@ namespace net {
 		auto filemeta_pckt = serde.build_filemeta(utils::filename_without_path(filename), size);
 		socket->send_checked(filemeta_pckt);
 
-		std::vector<uint8_t> buff(512, 0);
+		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
 		while(!file.eof()){
 			auto data_size = file.read(buff);
 			//got the chunk
@@ -128,6 +130,79 @@ namespace net {
 		socket->send_checked(response); //if fails, bubble up
 	}
 
+	SendFileRequest::SendFileRequest(const char* filename): 
+		filename(filename), hash(0), Payload(Net::Operation_SendFileRequest){}
+	SendFileRequest::SendFileRequest(const char* filename, uint64_t hash): 
+		filename(filename), hash(hash), Payload(Net::Operation_SendFileRequest){}
+
+	//read the file and sends the packets 
+	void SendFileRequest::send(Serializer& serde, std::shared_ptr<Socket> socket){
+	 	ssize_t size = file.open_read(filename);
+
+		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
+		komihash_stream_t ctx;
+		komihash_stream_init(&ctx, HASHSEED);
+		while(!file.eof()){
+			auto data_size = file.read(buff);
+			komihash_stream_update(&ctx, buff.data(), data_size);
+		}
+		file.finish();
+
+		hash = komihash_stream_final(&ctx);
+		std::cout << "computed hash: " << hash << std::endl;
+		auto sendfilerequest_pckt = serde.build_sendfilerequest(utils::filename_without_path(filename), hash);
+		socket->send_checked(sendfilerequest_pckt);
+	}
+	//receives the packets and writes to file
+	void SendFileRequest::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+	 	ssize_t size = file.open_read(filename, socket->get_username());
+
+		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
+		komihash_stream_t ctx;
+		komihash_stream_init(&ctx, HASHSEED);
+		while(!file.eof()){
+			auto data_size = file.read(buff);
+			komihash_stream_update(&ctx, buff.data(), data_size);
+		}
+		file.finish();
+
+		uint64_t recv_file_hash = komihash_stream_final(&ctx);
+		std::cout << "received hash: " << hash << std::endl;
+		std::cout << "computed hash: " << recv_file_hash << std::endl;
+
+		if(hash == recv_file_hash){
+			std::string msg("O servidor já possui esse mesmo arquivo nesse mesmo estado.");
+			auto response = serde.build_response(Net::Status_SameFile, msg);
+			socket->send_checked(response);
+		}else{
+			std::string msg("O servidor não possui essa versão atualizada do arquivo");
+			auto response = serde.build_response(Net::Status_Ok, msg);
+			socket->send_checked(response);
+		}
+	}
+	//awaits for ok or err pkct
+	void SendFileRequest::await_response(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto buff = socket->read_full_pckt();
+		auto pckt = serde.parse_expect(buff, Net::Operation_Response);
+		auto response = pckt->op_as_Response();
+		switch (response->status()){
+		case Net::Status_Ok:{
+			std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
+			net::Upload upload_file(filename.c_str());
+			upload_file.send(serde, socket);
+			upload_file.await_response(serde, socket);
+			return;
+		} break;
+		case Net::Status_SameFile:
+			std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
+			return;
+			break;
+		default:
+			throw TransmissionException();
+			break;
+		}
+	}
+
 	//opens the respective file 
 	//can fail, so need to send a response if it does so
 	Download::Download(const char* filename): 
@@ -145,7 +220,7 @@ namespace net {
 		auto filemeta_pckt = serde.build_filemeta(filename, size);
 		socket->send_checked(filemeta_pckt);
 
-		std::vector<uint8_t> buff(512, 0);
+		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
 		while(!file.eof()){
 			auto data_size = file.read(buff);
 			//got the chunk

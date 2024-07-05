@@ -89,15 +89,24 @@ std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 	} break;
 	case Net::Operation_FileMeta: {
 		auto payload = msg->op_as_FileMeta();
-		std::cout << "filemeta" << std::endl;
+		//std::cout << "filemeta" << std::endl;
 		return std::make_unique<net::Upload>(
 			payload->name()->c_str(),
 			payload->size()
 		);
 	} break;
+	case Net::Operation_SendFileRequest: {
+		auto payload = msg->op_as_SendFileRequest();
+		return std::make_unique<net::SendFileRequest>(
+			payload->name()->c_str(),
+			payload->hash()
+		);
+		//TODO:
+		//return std::make_unique
+	} break;
 	case Net::Operation_FileData:
 	case Net::Operation_Response:
-		throw net::ReceptionException("Unexpected packet at Payload::parse_from_buffer");
+		throw net::ReceptionException("Unexpected packet at Payload::parse_from_buffer why dog");
 		break;
 	default:
 		//didn't match any operation known

@@ -33,3 +33,4 @@ flatbuffers_generate_headers(
 )
 
 target_link_libraries(lib PUBLIC project_schemas) 
+

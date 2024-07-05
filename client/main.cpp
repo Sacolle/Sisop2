@@ -20,6 +20,7 @@ std::unique_ptr<net::Payload> get_cli_payload(){
 
 		try{
 			if(cmd == "upload"){ return std::make_unique<net::Upload>(args.c_str());
+			}else if(cmd == "sendreq"){ return std::make_unique<net::SendFileRequest>(args.c_str());
 			}else if(cmd == "delete"){ return std::make_unique<net::Delete>(args.c_str());
 			}else if(cmd == "exit"){ return std::make_unique<net::Exit>();
 			}else if(cmd == "ping"){ return std::make_unique<net::Ping>();
