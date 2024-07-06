@@ -1,6 +1,6 @@
 .vscode
 build
 
-#test files
+/tests
 100MB.bin
 big.txt

@@ -19,6 +19,7 @@ namespace net{
 			//opens a file, 
 			ssize_t open_read(const std::string& _filename, const std::string& dir_name);
 			ssize_t open_read(const std::string& _filename);
+			bool open_read_if_exists(const std::string& _filename, const std::string& dir_name);
 
 			ssize_t read(const std::vector<uint8_t>& buff);
 			void write(const uint8_t* buff, const size_t size);

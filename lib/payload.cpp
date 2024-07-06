@@ -12,7 +12,8 @@ namespace net {
 		filename = dir_name + "/" + _filename;
 		tmp_filename = dir_name + "/" +
 			utils::generate_random_alphanumeric_string(RANDOM_NAME_SIZE) + 
-			utils::get_file_extension(_filename);
+			utils::get_file_extension(_filename) + 
+			".tmp";
 
 		const auto options = std::ios::out | std::ios::binary | std::ios::trunc;
 
@@ -32,6 +33,20 @@ namespace net {
 		filename = _filename;
 		return _open_read();
 	}
+
+	bool SyncFile::open_read_if_exists(const std::string& _filename, const std::string& dir_name){
+		filename =  dir_name + "/" + _filename;
+
+		const auto options = std::ios::in | std::ios::binary | std::ios::ate;
+
+		file.open(filename, options);
+		if(!file.is_open()){
+			return false;
+		}
+		file.seekg(0);
+		return true;
+	}
+
 	ssize_t SyncFile::_open_read(){
 		const auto options = std::ios::in | std::ios::binary | std::ios::ate;
 
@@ -55,7 +70,7 @@ namespace net {
 		//TODO: if it has a lock, release it
 		file.close();
 		if(std::rename(tmp_filename.c_str(), filename.c_str())){
-			throw std::ios_base::failure("failed to renaimed file");
+			throw std::ios_base::failure("failed to rename file");
 		}
 	}
 	void SyncFile::finish(){
@@ -119,7 +134,7 @@ namespace net {
 
 			read_bytes += data_size;
 			file.write(data->data(), data_size);
-			std::cout << "Lido: " << read_bytes << std::endl; 
+			//std::cout << "Lido: " << read_bytes << std::endl; 
 		}
 		//TODO: rename the file and stuff
 		//read the file, send an ok
@@ -149,14 +164,21 @@ namespace net {
 		file.finish();
 
 		hash = komihash_stream_final(&ctx);
-		std::cout << "computed hash: " << hash << std::endl;
+		//std::cout << "computed hash: " << hash << std::endl;
+
 		auto sendfilerequest_pckt = serde.build_sendfilerequest(utils::filename_without_path(filename), hash);
 		socket->send_checked(sendfilerequest_pckt);
 	}
 	//receives the packets and writes to file
 	void SendFileRequest::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-	 	ssize_t size = file.open_read(filename, socket->get_username());
-
+		bool exists = file.open_read_if_exists(filename, socket->get_username());
+		if(!exists){
+			std::string msg("O servidor não possui esse arquivo");
+			auto response = serde.build_response(Net::Status_Ok, msg);
+			socket->send_checked(response);
+			return;
+		}
+		
 		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
 		komihash_stream_t ctx;
 		komihash_stream_init(&ctx, HASHSEED);
@@ -167,8 +189,8 @@ namespace net {
 		file.finish();
 
 		uint64_t recv_file_hash = komihash_stream_final(&ctx);
-		std::cout << "received hash: " << hash << std::endl;
-		std::cout << "computed hash: " << recv_file_hash << std::endl;
+		//std::cout << "received hash: " << hash << std::endl;
+		//std::cout << "computed hash: " << recv_file_hash << std::endl;
 
 		if(hash == recv_file_hash){
 			std::string msg("O servidor já possui esse mesmo arquivo nesse mesmo estado.");
@@ -251,7 +273,7 @@ namespace net {
 
 			read_bytes += data_size;
 			file.write(data->data(), data_size);
-			std::cout << "Lido: " << read_bytes << std::endl; 
+			//std::cout << "Lido: " << read_bytes << std::endl; 
 		}
 
 		file.finish_and_rename();
@@ -356,6 +378,11 @@ namespace net {
 	void Delete::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		try{
 			//TODO: close stuff
+			std::string file_to_remove(socket->get_username());
+			file_to_remove += "/";
+			file_to_remove += filename;
+			remove(file_to_remove.c_str());
+
 			std::string msg(filename);
 			msg += " deletado.";
 			auto pckt = serde.build_response(Net::Status_Ok, msg);

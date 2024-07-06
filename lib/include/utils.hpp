@@ -39,6 +39,12 @@ namespace utils {
 		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
 		return s.substr(pos, s.size() - pos);
 	}
+	inline bool is_tmp_file(const std::string &s){
+		const size_t pos_of_dot = s.find_last_of('.');
+		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
+		const auto ext = s.substr(pos, s.size() - pos);
+		return ext == ".tmp";
+	}
 
 
 	std::string generate_random_alphanumeric_string(std::size_t len);
