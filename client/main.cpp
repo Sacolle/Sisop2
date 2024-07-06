@@ -7,7 +7,10 @@
 #include <stdlib.h>
 #include <sys/inotify.h>
 #include <unistd.h>
+#include <iostream>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "packet_generated.h"
 
@@ -174,7 +177,8 @@ int main(int argc, char** argv){
 		std::cout << "failed to initialize connection" << '\n';
 		exit(1);
 	}
-	const char* userfolder = "sync_dir";
+	std::string userfolder = "sync_dir_";
+	userfolder.append(argv[1]);
 	/* Create the file descriptor for accessing the inotify API. */
 	int inotify_fd = inotify_init1(IN_NONBLOCK);
 	if (inotify_fd == -1) {
@@ -182,7 +186,13 @@ int main(int argc, char** argv){
 		exit(EXIT_FAILURE);
 	}
 
-	int watch_folder_fd = inotify_add_watch(inotify_fd, userfolder, IN_MOVE | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE);
+	// Create Directory if doesnt exist
+	struct stat folder_st = {0};
+	if (stat(userfolder.c_str(), &folder_st) == -1) {
+		mkdir(userfolder.c_str(), 0700);
+	}
+
+	int watch_folder_fd = inotify_add_watch(inotify_fd, userfolder.c_str(), IN_MOVE | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE);
 	if(watch_folder_fd == -1){
 		std::cerr << "Cannot watch '" << userfolder << "' : " << strerror(errno) << std::endl;
 		exit(EXIT_FAILURE);
