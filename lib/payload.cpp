@@ -258,7 +258,7 @@ namespace net {
 		auto pckt = serde.parse_expect(buff, Net::Operation_FileMeta);
 		auto filemeta = pckt->op_as_FileMeta();
 
-		file.open_recv(filemeta->name()->str(), "sync_dir");
+		file.open_recv(filemeta->name()->str(), ".");
 
 		const auto file_size = filemeta->size();
 		uint64_t read_bytes = 0;
