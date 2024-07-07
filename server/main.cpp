@@ -6,6 +6,9 @@
 #include "packet_generated.h"
 
 #include <iostream>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define PORT "20001"
 #define BACKLOG 10
@@ -40,7 +43,7 @@
 //faz o inicio da conexão, 
 //checando o número de pessoas conectadas (max 2)
 //e setando o nome do user dessa socket
-void initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket){
+std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket){
 	
 	//check num of conections
 	auto buff = socket->read_full_pckt();
@@ -52,6 +55,7 @@ void initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> sock
 		connect_raw->id()
 	);
 	connect.reply(serde, socket);
+	return connect.username;
 }
 
 std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
@@ -117,13 +121,23 @@ std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 
 void server_loop(std::shared_ptr<net::Socket> socket){
 	net::Serializer serde;
+	std::string username; 
 	try{
-		initial_handshake(serde, socket);
+		username = initial_handshake(serde, socket);
 	}catch(...){
 		std::cout << "failed to initialize connection" << '\n';
 		exit(1);
 	}
 	
+	std::string userfolder = "sync_dir_";
+	userfolder.append(username);
+
+	// Create Directory if doesnt exist
+	struct stat folder_st = {0};
+	if (stat(userfolder.c_str(), &folder_st) == -1) {
+		mkdir(userfolder.c_str(), 0700);
+	}
+
 	while(1){
 		try{
 			auto buff = socket->read_full_pckt();
