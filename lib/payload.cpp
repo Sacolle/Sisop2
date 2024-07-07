@@ -118,7 +118,7 @@ namespace net {
 	//receives the packets and writes to file
 	void Upload::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 
-		file.open_recv(utils::filename_without_path(filename), socket->get_username());
+		file.open_recv(utils::filename_without_path(filename), utils::get_sync_dir_path(socket->get_username()));
 
 		//already received the filemeta and builded this upload obj, having the corret size
 		//receive the following pckts
@@ -171,7 +171,7 @@ namespace net {
 	}
 	//receives the packets and writes to file
 	void SendFileRequest::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-		bool exists = file.open_read_if_exists(filename, socket->get_username());
+		bool exists = file.open_read_if_exists(filename, utils::get_sync_dir_path(socket->get_username()));
 		if(!exists){
 			std::string msg("O servidor não possui esse arquivo");
 			auto response = serde.build_response(Net::Status_Ok, msg);
@@ -237,8 +237,7 @@ namespace net {
 
 	//opens the file (if it has), and sends the meta + chunks of data
 	void Download::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-		size = file.open_read(utils::filename_without_path(filename), socket->get_username());
-
+		size = file.open_read(utils::filename_without_path(filename), utils::get_sync_dir_path(socket->get_username()));
 		auto filemeta_pckt = serde.build_filemeta(filename, size);
 		socket->send_checked(filemeta_pckt);
 
@@ -378,7 +377,7 @@ namespace net {
 	void Delete::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		try{
 			//TODO: close stuff
-			std::string file_to_remove(socket->get_username());
+			std::string file_to_remove(utils::get_sync_dir_path(socket->get_username()));
 			file_to_remove += "/";
 			file_to_remove += filename;
 			remove(file_to_remove.c_str());

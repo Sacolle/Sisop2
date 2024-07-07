@@ -6,6 +6,7 @@
 #include "packet_generated.h"
 
 #include <iostream>
+#include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -110,11 +111,11 @@ std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 	} break;
 	case Net::Operation_FileData:
 	case Net::Operation_Response:
-		throw net::ReceptionException("Unexpected packet at Payload::parse_from_buffer why dog");
+		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ").append(utils::pckt_type_to_name(msg->op_type())));
 		break;
 	default:
 		//didn't match any operation known
-		throw net::ReceptionException("didn't match any operation known");
+		throw net::ReceptionException("Didn't match any operation known\n");
 	}
 	//NOTE: could make a trycatch which cathes and sends the error after
 }
@@ -129,8 +130,7 @@ void server_loop(std::shared_ptr<net::Socket> socket){
 		exit(1);
 	}
 	
-	std::string userfolder = "sync_dir_";
-	userfolder.append(username);
+	std::string userfolder = utils::get_sync_dir_path(username);
 
 	// Create Directory if doesnt exist
 	struct stat folder_st = {0};

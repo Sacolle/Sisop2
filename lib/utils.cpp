@@ -1,5 +1,6 @@
 #include "utils.hpp"
 
+#include <string>
 
 #define TOSTR(x) # x
 #define ENUM_TO_STR_CASE(val) case val: return TOSTR(val) 
@@ -40,5 +41,12 @@ namespace utils {
 		auto result = std::string(len, '\0');
 		std::generate_n(begin(result), len, [&]() { return chars[dist(rng)]; });
 		return result;
+	}
+
+	std::string get_sync_dir_path(std::string username){
+		std::string s("sync_dir_");
+		s.append(username);
+		printf("%s", s.c_str());
+		return s;
 	}
 }

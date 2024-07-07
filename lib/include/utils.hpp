@@ -49,6 +49,8 @@ namespace utils {
 
 	std::string generate_random_alphanumeric_string(std::size_t len);
 	const char* pckt_type_to_name(Net::Operation op);
+
+	std::string get_sync_dir_path(std::string username);
 }
 
 #endif

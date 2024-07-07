@@ -124,7 +124,7 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 
 			#define MASKPRINT(x, s) if(event->mask & x) std::cout << s << std::endl
 
-			std::string correct_path("sync_dir/");
+			std::string correct_path = utils::get_sync_dir_path(socket->get_username()) + "/"; 
 			correct_path += filename;
 
 			//acontece quando arquivo é criado, renomeado, movido para dentro, ou editado
@@ -177,8 +177,9 @@ int main(int argc, char** argv){
 		std::cout << "failed to initialize connection" << '\n';
 		exit(1);
 	}
-	std::string userfolder = "sync_dir_";
-	userfolder.append(argv[1]);
+
+	std::string userfolder = utils::get_sync_dir_path(std::string(argv[1])); 
+
 	/* Create the file descriptor for accessing the inotify API. */
 	int inotify_fd = inotify_init1(IN_NONBLOCK);
 	if (inotify_fd == -1) {
@@ -227,6 +228,7 @@ int main(int argc, char** argv){
 				std::cout << "cmd: " <<  cmd << std::endl << "args: " << args << std::endl; 
 				execute_payload(serde, socket, cmd, args);
 			}
+			/* directory synchronization */
 			if (fds[1].revents & POLLIN) {
 				/* Inotify events are available. */
 				std::cout << "registered event" << std::endl;
