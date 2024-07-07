@@ -18,6 +18,7 @@
 #include "payload.hpp"
 #include "serializer.hpp"
 #include "utils.hpp"
+#include "exceptions.hpp"
 
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
 
@@ -55,15 +56,49 @@ net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	}
 }
 
-void initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, const char* username){
+std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
+	auto msg = Net::GetSizePrefixedPacket(buff);
+
+	switch (msg->op_type()){
+	case Net::Operation_Delete: {
+		auto payload = msg->op_as_Delete();
+		return std::make_shared<net::Delete>(
+			payload->filename()->c_str()
+		);
+	} break;
+	case Net::Operation_FileMeta: {
+		auto payload = msg->op_as_FileMeta();
+		//std::cout << "filemeta" << std::endl;
+		return std::make_shared<net::Upload>(
+			payload->name()->c_str(),
+			payload->size()
+		);
+	} break;
+	case Net::Operation_ListFiles:
+	case Net::Operation_Ping:
+	case Net::Operation_Exit:
+	case Net::Operation_Download:
+	case Net::Operation_SendFileRequest:
+	case Net::Operation_FileData:
+	case Net::Operation_Response:
+		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ").append(utils::pckt_type_to_name(msg->op_type())));
+		break;
+	default:
+		//didn't match any operation known
+		throw net::ReceptionException("Didn't match any operation known\n");
+	}
+}
+
+std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, const char* username, int id){
 	//TODO: read the connect info from args[]
 	net::Connect connect(
 		username, 
 		Net::ChannelType_Main,
-		0
+		id
 	);
 	connect.send(serde, socket);
 	connect.await_response(serde, socket);
+	return connect.port; 
 }
 
 void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket, std::string& cmd, std::string& args){
@@ -152,33 +187,8 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 	}
 }
 
-int main(int argc, char** argv){
-	if(argc < 4){
-		std::cerr << "argumentos insuficientes para começar o servidor" << '\n';
-		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port>" << std::endl;
-		exit(2);
-	}
-
-	net::ClientSocket base_socket;
-	try {
-		base_socket.connect(argv[2], argv[3]);
-	}
-	catch(const std::exception& e){
-		std::cerr << e.what() << '\n';
-		exit(1);
-	}
-	auto socket = base_socket.build();
-
-	net::Serializer serde;
-
-	try{
-		initial_handshake(serde, socket, argv[1]);
-	}catch(...){
-		std::cout << "failed to initialize connection" << '\n';
-		exit(1);
-	}
-
-	std::string userfolder = utils::get_sync_dir_path(std::string(argv[1])); 
+void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer &serde, char *username) {
+	std::string userfolder = utils::get_sync_dir_path(std::string(username)); 
 
 	/* Create the file descriptor for accessing the inotify API. */
 	int inotify_fd = inotify_init1(IN_NONBLOCK);
@@ -198,6 +208,7 @@ int main(int argc, char** argv){
 		std::cerr << "Cannot watch '" << userfolder << "' : " << strerror(errno) << std::endl;
 		exit(EXIT_FAILURE);
 	}
+	
 	/* Prepare for polling. */
 	static const nfds_t nfds = 2;
 
@@ -240,6 +251,87 @@ int main(int argc, char** argv){
 	/* Close inotify file descriptor. */
 	close(inotify_fd);
 	close(watch_folder_fd);
+}
+
+
+void *client_loop_data(void *arg) {
+	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
+
+	net::Serializer serde;
+	while(1) {
+		try {
+			auto buff = socket->read_full_pckt();
+			auto payload = parse_payload(buff);
+			std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
+			payload->reply(serde, socket);
+		}
+		catch (std::exception e) {
+			std::cerr << e.what() << std::endl;
+		}
+	}
+}
+
+int main(int argc, char** argv){
+	if(argc < 4){
+		std::cerr << "argumentos insuficientes para começar o servidor" << '\n';
+		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port>" << std::endl;
+		exit(2);
+	}
+	int id = utils::random_number();
+
+	/* Conexão com o socket de comandos */
+	net::ClientSocket base_socket_commands;
+
+	try {
+		base_socket_commands.connect(argv[2], argv[3]);
+	}
+	catch(const std::exception& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+
+	auto socket_commands = base_socket_commands.build();
+
+	net::Serializer serde;
+
+	std::string data_port;
+	
+	// Command handshake
+	try {
+		data_port = initial_handshake(serde, socket_commands, argv[1], id);
+	} catch (net::InvalidConnectionException e){
+		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
+		exit(1);
+	}
+
+	/* Conexão com o socket de receber dados da outra session */
+
+	net::ClientSocket base_socket_data;
+
+	try {
+		base_socket_data.connect(argv[2], data_port.c_str());
+	}
+	catch(const std::exception& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+
+	auto socket_data = base_socket_data.build();
+
+	/* Data handshake */
+	try {
+		initial_handshake(serde, socket_data, argv[1], id);
+	} catch (net::InvalidConnectionException e){
+		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
+		exit(1);
+	}
+
+	/* Início da thread para leitura de dados */
+	pthread_t t_data;
+	pthread_create(&t_data, NULL, client_loop_data, socket_data.get());
+
+	/* Loop de espera de comandos */
+	client_loop_commands(socket_commands, serde, argv[1]);
 
 	exit(EXIT_SUCCESS);
     return 0;

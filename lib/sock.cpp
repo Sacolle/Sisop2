@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include <cerrno>
 #include <iostream>
@@ -105,6 +106,7 @@ namespace net{
 
 		freeaddrinfo(servinfo); // all done with this structure
 		//at this point fd = the socket file descriptor
+		::fcntl(fd, F_SETFL, O_NONBLOCK);
 		if(::listen(fd, backlog) == -1){
 			std::string error_message("Failed to listen to port: \n\t");
 			error_message += strerror(errno);
@@ -112,21 +114,25 @@ namespace net{
 		}
 	}
 
-	std::shared_ptr<Socket> ServerSocket::accept(){
+	Socket *ServerSocket::accept(){
 		struct sockaddr_storage their_addr;
 		socklen_t addr_size = sizeof(their_addr);
 		int accept_sock = ::accept(fd, (struct sockaddr *)&their_addr, &addr_size);
 		if(accept_sock == -1){
-			std::string error_message("Failed to accept port: \n\t");
-			error_message += strerror(errno);
-			throw NetworkException(error_message);
+			if ((errno != EAGAIN && errno != EWOULDBLOCK)) {
+				std::string error_message("Failed to accept port: \n\t");
+				error_message += strerror(errno);
+				throw NetworkException(error_message);
+			} else {
+				return nullptr;
+			}
 		}
 		//le as informações de porta e ip do endereço conectado
 		char ip[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &((struct sockaddr_in*)&their_addr)->sin_addr, ip, INET_ADDRSTRLEN );
 		u_int16_t port = ntohs(((struct sockaddr_in*)&their_addr)->sin_port);
 		//could be saved at socket
-		return std::make_shared<Socket>(accept_sock, ip, port);
+		return new Socket(accept_sock, ip, port);
 	}
 	//client
 	void ClientSocket::connect(const char* ip, const char* port){

@@ -79,8 +79,9 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for ok or err pkct
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+			bool is_server = false; 	
 		private:
-			const std::string filename;
+			std::string filename;
 			SyncFile file;
 			uint64_t size;
 	};
@@ -146,6 +147,9 @@ namespace net{
 			const uint64_t id; //value unique to a client
 			const std::string username;
 			const Net::ChannelType channel_type;
+			bool valid_connection = true;
+			bool command_connection = false; 
+			std::string port;
 	};
 
 	class Ping : public Payload {

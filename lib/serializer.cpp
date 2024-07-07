@@ -98,10 +98,11 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg){
+	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg, std::string *port){
 		builder.Clear();
-
-		auto response = Net::CreateResponse(builder, status, builder.CreateString(msg));
+		flatbuffers::Offset<Net::Response> response;
+		if (port == nullptr) response = Net::CreateResponse(builder, status, builder.CreateString(msg));
+		else response = Net::CreateResponse(builder, status, builder.CreateString(msg), builder.CreateString(*port));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Response, response.Union());
 		builder.FinishSizePrefixed(packet);
 

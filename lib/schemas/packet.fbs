@@ -68,6 +68,7 @@ enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq }
 table Response {
 	status: Status;
 	msg: string;
+	port: string; 
 }
  
 root_type Packet;

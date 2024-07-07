@@ -1,4 +1,5 @@
 #include "payload.hpp"
+#include "exceptions.hpp"
 
 #include <iostream>
 #include <cstdio>
@@ -101,6 +102,7 @@ namespace net {
 	//`throws` in `socket->send_checked`
 	void Upload::send(Serializer& serde, std::shared_ptr<Socket> socket){
 		//open the file efectivelly
+		if (is_server) filename = utils::get_sync_dir_path(socket->get_username()) +  "/" + filename; 
 		size = file.open_read(filename);
 
 		auto filemeta_pckt = serde.build_filemeta(utils::filename_without_path(filename), size);
@@ -297,11 +299,19 @@ namespace net {
 	void Connect::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		socket->set_connection_info(username, id, channel_type);
 		//TODO: send all files associated with the username
-		std::string msg("Conectado corretamente ao user ");
-		msg += username;
-		msg += " com id único ";
-		msg += id;
-		auto pckt = serde.build_response(Net::Status_Ok, msg);
+		std::string msg;
+		if (this->valid_connection){
+			msg += "Conectado corretamente ao user ";
+			msg += username;
+			msg += " com id único ";
+			msg += std::to_string(id);
+		} else {
+			msg += "Limite de conexões da sessão ultrapassado";
+		}
+		std::string port(PORT_DATA); 
+		FlatBufferBuilder*  pckt;
+		if (this->command_connection) pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg, &port);
+		else pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg);
 		socket->send_checked(pckt);
 	}
 
@@ -311,14 +321,16 @@ namespace net {
 		auto pckt = serde.parse_expect(buff, Net::Operation_Response);
 		auto response = pckt->op_as_Response();
 		if(response->status() != Net::Status_Ok){
-			//TODO: precisa de uma exceção para quando os pacotes são enviados corretamente
-			//mas ocorre um erro mesmo assim
-			throw TransmissionException();
-		}else{
+			std::cerr << response->msg() << std::endl; 
+			throw InvalidConnectionException(response->msg()->c_str());
+		}else {
 			std::cout << "Conexão estabelecida corretamente:\n\tUsername: " 
 				<< username << "\n\t" 
 				<< "Id: " << id << "\n\t"
 				<< "Resposta do servidor: " << response->msg()->c_str() << std::endl;  
+		}
+		if (response->port()) {
+			port = std::string(strdup(response->port()->c_str()));
 		}
 	}
 

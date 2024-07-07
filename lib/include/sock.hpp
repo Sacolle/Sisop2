@@ -62,7 +62,7 @@ namespace net{
 			ServerSocket() noexcept {}
 
 			void open(const char* port, const int backlog);
-			std::shared_ptr<Socket> accept();
+			Socket *accept();
 		private:
 			int fd;
 	};

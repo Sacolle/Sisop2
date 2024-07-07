@@ -2,16 +2,20 @@
 #include "payload.hpp"
 #include "serializer.hpp"
 #include "utils.hpp"
+#include "user_server.hpp"
 
 #include "packet_generated.h"
 
 #include <iostream>
+#include <utility>
+#include <map>
 #include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
 
-#define PORT "20001"
+
 #define BACKLOG 10
 // Arquivo Histórico .fbs == .facebook 
 // Arquivo histórico: "lacall"
@@ -40,12 +44,16 @@
 	- ERR
 */
 
+void exit_session(const std::string session, UserServer *user, int *id); 
+
+
+pthread_mutex_t mutex_get_user_session = PTHREAD_MUTEX_INITIALIZER;
+std::map<std::string, UserServer> users_sessions;
 
 //faz o inicio da conexão, 
 //checando o número de pessoas conectadas (max 2)
 //e setando o nome do user dessa socket
-std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket){
-	
+UserServer* initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, int *id, bool is_command){
 	//check num of conections
 	auto buff = socket->read_full_pckt();
 	auto pckt = serde.parse_expect(buff, Net::Operation_Connect);
@@ -55,11 +63,25 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 		connect_raw->type(), 
 		connect_raw->id()
 	);
+	connect.command_connection = is_command; 
+	*id = connect_raw->id(); 
+	pthread_mutex_lock(&mutex_get_user_session);
+	UserServer* user_session = &users_sessions[connect.username];
+	pthread_mutex_unlock(&mutex_get_user_session);
+	if (user_session->get_session_connections_num() >= 2){
+		connect.valid_connection = false; 
+		connect.reply(serde, socket);
+		exit_session(connect.username, user_session, id);
+	}
+
+	user_session->add_session(*id); 
+	user_session->set_username(connect.username);
+
 	connect.reply(serde, socket);
-	return connect.username;
+	return user_session;
 }
 
-std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
+std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	auto msg = Net::GetSizePrefixedPacket(buff);
 
 	switch (msg->op_type()){
@@ -72,37 +94,37 @@ std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 		);
 	} break;*/
 	case Net::Operation_ListFiles: {
-		return std::make_unique<net::ListFiles>();
+		return std::make_shared<net::ListFiles>();
 	} break;
 	case Net::Operation_Ping: {
-		return std::make_unique<net::Ping>();
+		return std::make_shared<net::Ping>();
 	} break;
 	case Net::Operation_Exit: {
-		return std::make_unique<net::Exit>();
+		return std::make_shared<net::Exit>();
 	} break;
 	case Net::Operation_Download: {
 		auto payload = msg->op_as_Download();
-		return std::make_unique<net::Download>(
+		return std::make_shared<net::Download>(
 			payload->filename()->c_str()
 		);
 	} break;
 	case Net::Operation_Delete: {
 		auto payload = msg->op_as_Delete();
-		return std::make_unique<net::Delete>(
+		return std::make_shared<net::Delete>(
 			payload->filename()->c_str()
 		);
 	} break;
 	case Net::Operation_FileMeta: {
 		auto payload = msg->op_as_FileMeta();
 		//std::cout << "filemeta" << std::endl;
-		return std::make_unique<net::Upload>(
+		return std::make_shared<net::Upload>(
 			payload->name()->c_str(),
 			payload->size()
 		);
 	} break;
 	case Net::Operation_SendFileRequest: {
 		auto payload = msg->op_as_SendFileRequest();
-		return std::make_unique<net::SendFileRequest>(
+		return std::make_shared<net::SendFileRequest>(
 			payload->name()->c_str(),
 			payload->hash()
 		);
@@ -120,33 +142,53 @@ std::unique_ptr<net::Payload> parse_payload(uint8_t* buff){
 	//NOTE: could make a trycatch which cathes and sends the error after
 }
 
-void server_loop(std::shared_ptr<net::Socket> socket){
-	net::Serializer serde;
-	std::string username; 
-	try{
-		username = initial_handshake(serde, socket);
-	}catch(...){
-		std::cout << "failed to initialize connection" << '\n';
-		exit(1);
+void exit_session(const std::string session, UserServer *user, int *id){
+	std::cout << "Exiting " <<  session << "..." << std::endl; 
+	if (id != nullptr) {
+		user->remove_session(*id);
 	}
-	
-	std::string userfolder = utils::get_sync_dir_path(username);
+	pthread_exit(NULL);
+}
 
-	// Create Directory if doesnt exist
+pthread_mutex_t mutex_check_directory_exists = PTHREAD_MUTEX_INITIALIZER;
+
+// void *server_loop(std::shared_ptr<net::Socket> socket)
+void *server_loop_commands(void *arg){
+	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
+	net::Serializer serde;
+	UserServer* user_session; 
+	int id; 
+	try{
+		user_session = initial_handshake(serde, socket, &id, true);
+	}catch(std::exception e){
+		std::cout << "failed to initialize connection: " << e.what() << std::endl;
+		exit_session("Unknown user", nullptr, nullptr); 
+	}
+
+	std::string userfolder = utils::get_sync_dir_path(user_session->get_username());
+	
+	pthread_mutex_lock(&mutex_check_directory_exists);
+	// Create directory if it doesn't exist
 	struct stat folder_st = {0};
 	if (stat(userfolder.c_str(), &folder_st) == -1) {
 		mkdir(userfolder.c_str(), 0700);
 	}
+	pthread_mutex_unlock(&mutex_check_directory_exists);
 
+	int session_num = user_session->get_session_connections_num();
+
+	std::string session = user_session->get_username() + std::string("session_").append(std::to_string(session_num)) + "_command";
 	while(1){
 		try{
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
 			std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
 			payload->reply(serde, socket);
+			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
+				user_session->add_data_packet(payload, id);
+			}
 		}catch(const net::CloseConnectionException& e){
-			std::cerr << "Cliente desconectado" << std::endl;
-			exit(1);
+			exit_session(session, user_session, &id);
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
 			//TODO: await a bit, flush the socket and send a ping to see if its ok
@@ -155,24 +197,78 @@ void server_loop(std::shared_ptr<net::Socket> socket){
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
-				std::cerr << "Cliente desconectado" << std::endl;
-				exit(1);
+				exit_session(session, user_session, &id);
 			}catch(const std::exception& e){
 				std::cout << e.what() << '\n';
 			}
-		}catch(...){
-			std::cout << "idk man maybe" << std::endl;
+		}catch(std::exception e){
+			std::cerr << e.what() << std::endl;
 		}
+		
 	}
 
 }
 
+/* Loop para a thread de sincronização de arquivos entre sessions */
+/* Encaminha pacotes de uma session para outra */
+void *server_loop_data(void *arg) {
+	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
+	net::Serializer serde;
+	UserServer* user_session;
+	int id;
+	try{
+		user_session = initial_handshake(serde, socket, &id, false);
+	}catch(std::exception e){
+		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
+		exit_session("Unknown user", nullptr, nullptr); 
+	}
+
+	std::string userfolder = utils::get_sync_dir_path(user_session->get_username());
+
+	pthread_mutex_lock(&mutex_check_directory_exists);
+	// Create directory if it doesn't exist
+	struct stat folder_st = {0};
+	if (stat(userfolder.c_str(), &folder_st) == -1) {
+		mkdir(userfolder.c_str(), 0700);
+	}
+	pthread_mutex_unlock(&mutex_check_directory_exists);
+
+	int session_num = user_session->get_session_connections_num();
+
+	std::string session = user_session->get_username() + std::string("session_").append(std::to_string(session_num)) + "_data";  
+	while(1){
+		auto payload = user_session->get_data_packet(id);
+		if (payload != nullptr) {
+			std::cout << "Data sending: " << session << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
+			if (payload->get_type() == Net::Operation_FileMeta)
+				dynamic_cast<net::Upload*>(payload.get())->is_server = true; 
+			payload->send(serde, socket);
+			payload->await_response(serde, socket);
+		}
+		else {
+			/* Fazer algo pra não ficar o tempo todo travando o mutex de data packet */
+			/* Ou não */
+		}
+	}
+}
+
+
 
 int main() {
-	net::ServerSocket socket;
 
+	net::ServerSocket socket_command_listen_server;
+	net::ServerSocket socket_data_listen_server;
+	/* Conecta a socket de comandos */
 	try{
-		socket.open(PORT, BACKLOG);
+		socket_command_listen_server.open(PORT_COMMAND, BACKLOG);
+	}
+	catch(const net::NetworkException& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+	/* Conecta a socket de dados */
+	try{
+		socket_data_listen_server.open(PORT_DATA, BACKLOG);
 	}
 	catch(const net::NetworkException& e){
 		std::cerr << e.what() << '\n';
@@ -180,9 +276,23 @@ int main() {
 	}
 	while(1){
 		try {
-			auto s = socket.accept();
-			s->print_address();
-			server_loop(s);
+			auto s_commands = socket_command_listen_server.accept();
+			auto s_data = socket_data_listen_server.accept();
+			/* Cria nova thread e começa o server loop nela */
+			/* A thread atual se mantém a espera de conexão */
+			if (s_commands != nullptr){
+				s_commands->print_address();
+				pthread_t t_commands;
+				pthread_create(&t_commands, NULL, server_loop_commands, s_commands);
+			}
+			if (s_data != nullptr){
+				s_data->print_address();
+				pthread_t t_data;
+				pthread_create(&t_data, NULL, server_loop_data, s_data);
+			}
+			if (s_commands == nullptr && s_data == nullptr){
+				// TODO busy wait
+			}
 		}catch(const net::NetworkException& e){
 			std::cerr << e.what() << '\n';
 		}

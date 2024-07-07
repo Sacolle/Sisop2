@@ -51,6 +51,8 @@ namespace utils {
 	const char* pckt_type_to_name(Net::Operation op);
 
 	std::string get_sync_dir_path(std::string username);
+
+	int random_number();
 }
 
 #endif

@@ -46,7 +46,11 @@ namespace utils {
 	std::string get_sync_dir_path(std::string username){
 		std::string s("sync_dir_");
 		s.append(username);
-		printf("%s", s.c_str());
 		return s;
+	}
+
+	int random_number() {
+		srand(time(NULL));
+		return rand();
 	}
 }

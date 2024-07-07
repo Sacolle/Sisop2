@@ -26,7 +26,7 @@ namespace net{
 			FlatBufferBuilder* build_connect(std::string const& username, Net::ChannelType type, uint64_t id);
 			FlatBufferBuilder* build_download(std::string const& filename);
 			FlatBufferBuilder* build_delete(std::string const& filename);
-			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg);
+			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg, std::string *port = nullptr);
 
 		private:
 			FlatBufferBuilder builder;
