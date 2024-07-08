@@ -14,6 +14,8 @@ class UserServer {
         void remove_session(int id);
         void add_data_packet(std::shared_ptr<net::Payload> payload, int id);
         std::shared_ptr<net::Payload> get_data_packet(int id);
+        bool is_logged(int id); 
+        void unlock_packet();
     private:
         pthread_mutex_t mutex_session_connection_num = PTHREAD_MUTEX_INITIALIZER;
         pthread_mutex_t mutex_username = PTHREAD_MUTEX_INITIALIZER;

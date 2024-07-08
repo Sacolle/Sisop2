@@ -68,7 +68,7 @@ UserServer* initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	pthread_mutex_lock(&mutex_get_user_session);
 	UserServer* user_session = &users_sessions[connect.username];
 	pthread_mutex_unlock(&mutex_get_user_session);
-	if (user_session->get_session_connections_num() >= 2){
+	if (!user_session->is_logged(*id) && user_session->get_session_connections_num() >= 2){
 		connect.valid_connection = false; 
 		connect.reply(serde, socket);
 		exit_session(connect.username, user_session, id);
@@ -139,7 +139,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		//didn't match any operation known
 		throw net::ReceptionException("Didn't match any operation known\n");
 	}
-	//NOTE: could make a trycatch which cathes and sends the error after
+	//NOTE: could make a trycatch which catches and sends the error after
 }
 
 void exit_session(const std::string session, UserServer *user, int *id){
@@ -249,6 +249,7 @@ void *server_loop_data(void *arg) {
 			/* Fazer algo pra não ficar o tempo todo travando o mutex de data packet */
 			/* Ou não */
 		}
+		user_session->unlock_packet(); 
 	}
 }
 

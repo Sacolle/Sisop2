@@ -102,8 +102,11 @@ namespace net {
 	//`throws` in `socket->send_checked`
 	void Upload::send(Serializer& serde, std::shared_ptr<Socket> socket){
 		//open the file efectivelly
-		if (is_server) filename = utils::get_sync_dir_path(socket->get_username()) +  "/" + filename; 
-		size = file.open_read(filename);
+		if (is_server){  
+			size = file.open_read(filename, utils::get_sync_dir_path(socket->get_username()));
+		} else {
+			size = file.open_read(filename);
+		}
 
 		auto filemeta_pckt = serde.build_filemeta(utils::filename_without_path(filename), size);
 		socket->send_checked(filemeta_pckt);

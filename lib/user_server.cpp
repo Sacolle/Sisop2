@@ -20,10 +20,25 @@ int UserServer::get_session_connections_num() {
     return session_connections_;
 }
 
+bool UserServer::is_logged(int id) {
+    pthread_mutex_lock(&(this->mutex_session_connection_num));
+    for (int i = 0; i < session_ids.size(); i++){
+        if (session_ids[i] == id) {
+            pthread_mutex_unlock(&(this->mutex_session_connection_num));
+            return true;
+        }
+    }
+    pthread_mutex_unlock(&(this->mutex_session_connection_num));
+    return false;
+}
+
 void UserServer::add_session(int id) {
     pthread_mutex_lock(&(this->mutex_session_connection_num));
     for (int i = 0; i < session_ids.size(); i++){
-        if (session_ids[i] == id) return;
+        if (session_ids[i] == id) {
+            pthread_mutex_unlock(&(this->mutex_session_connection_num));
+            return;
+        }
     }
     session_connections++;
     session_ids.push_back(id);
@@ -44,29 +59,26 @@ void UserServer::remove_session(int id){
 
 void UserServer::add_data_packet(std::shared_ptr<net::Payload> payload, int id) {
     pthread_mutex_lock(&(this->mutex_data_packets));
-    data_packets_map[id].push(payload);
+    for (auto it = data_packets_map.begin(); it !=  data_packets_map.end(); it++){
+        it->second.push(payload);
+    }
     pthread_mutex_unlock(&(this->mutex_data_packets));
 }
 
 std::shared_ptr<net::Payload> UserServer::get_data_packet(int id) {
     pthread_mutex_lock(&(this->mutex_data_packets));
-    std::queue<std::shared_ptr<net::Payload>> * queue = nullptr;
-    // Selecting the other queue as there will only be 2, so we want the one with different id
-    for (auto it = data_packets_map.begin(); it !=  data_packets_map.end(); it++){
-        if (id != it->first){
-            queue = &it->second;
-        }
-    }
-    if (queue == nullptr) return nullptr; 
-    
+    std::queue<std::shared_ptr<net::Payload>>& queue = data_packets_map[id];     
     std::shared_ptr<net::Payload> payload_;
-    if (!queue->empty()) {
-        payload_ = std::move(queue->front());
-        queue->pop();
+    if (!queue.empty()) {
+        payload_ = std::move(queue.front());
+        queue.pop();
     }
     else {
         payload_ = nullptr;
     }
-    pthread_mutex_unlock(&(this->mutex_data_packets));
     return payload_;
+}
+
+void UserServer::unlock_packet(){
+    pthread_mutex_unlock(&(this->mutex_data_packets));
 }
