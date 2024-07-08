@@ -176,7 +176,7 @@ namespace net{
 			//reads the username folder and returns a response with the name of the files there
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the response
-			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
 	};
 
 	class Exit : public Payload {

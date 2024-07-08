@@ -10,7 +10,7 @@
 #include <iostream>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/stat.h>
+#include <filesystem>
 
 #include "packet_generated.h"
 
@@ -22,6 +22,9 @@
 
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
 
+pthread_mutex_t mutex_close_threads = PTHREAD_MUTEX_INITIALIZER;
+bool close_threads = false;
+
 net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	//TODO: parse
 	utils::trim(cmd);
@@ -31,21 +34,15 @@ net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 		if(cmd == "upload"){ return new net::Upload(args.c_str());
 		}else if(cmd == "sendreq"){ return new net::SendFileRequest(args.c_str());
 		}else if(cmd == "delete"){ return new net::Delete(args.c_str());
-		}else if(cmd == "exit"){ return new net::Exit();
+		}else if(cmd == "exit"){
+			pthread_mutex_lock(&mutex_close_threads);
+			close_threads = true;
+			pthread_mutex_unlock(&mutex_close_threads);
 		}else if(cmd == "ping"){ return new net::Ping();
 		}else if(cmd == "download"){
 			return new net::Download(args.c_str());
-		}else if(cmd == "list"){
-			if(args == "server"){
-				return new net::ListFiles();
-			}else if(args == "client"){
-				std::cout << "arquivos do cliente são: " << std::endl;
-				return nullptr;
-			}else{
-				std::cout << "Args " << args << " não reconhecido.\n";
-				std::cout << "Tente: client ou server." << std::endl;
-				return nullptr;
-			}
+		}else if(cmd == "list_server" || cmd == "list_client"){
+			return new net::ListFiles();
 		}else{
 			std::cout << "Comando " << cmd << " não reconhecido.\n";
 			std::cout << "Tente: upload, download, delete, list ou exit." << std::endl;
@@ -165,9 +162,9 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 			//acontece quando arquivo é criado, renomeado, movido para dentro, ou editado
 			if (event->mask & (IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO)){
 				//upload
-				MASKPRINT(IN_CREATE, "criar");
-				MASKPRINT(IN_CLOSE_WRITE, "editar");
-				MASKPRINT(IN_MOVED_TO, "mover");
+				// MASKPRINT(IN_CREATE, "criar");
+				// MASKPRINT(IN_CLOSE_WRITE, "editar");
+				// MASKPRINT(IN_MOVED_TO, "mover");
 				
 
 				net::SendFileRequest req(correct_path.c_str());
@@ -176,8 +173,8 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 			}
 			if (event->mask & (IN_MOVED_FROM | IN_DELETE)){
 				//delete
-				MASKPRINT(IN_MOVED_FROM, "tirado");
-				MASKPRINT(IN_DELETE, "deletado");
+				// MASKPRINT(IN_MOVED_FROM, "tirado");
+				// MASKPRINT(IN_DELETE, "deletado");
 
 				net::Delete req(filename);
 				req.send(serde, socket);
@@ -195,12 +192,6 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 	if (inotify_fd == -1) {
 		perror("inotify_init1");
 		exit(EXIT_FAILURE);
-	}
-
-	// Create Directory if doesnt exist
-	struct stat folder_st = {0};
-	if (stat(userfolder.c_str(), &folder_st) == -1) {
-		mkdir(userfolder.c_str(), 0700);
 	}
 
 	int watch_folder_fd = inotify_add_watch(inotify_fd, userfolder.c_str(), IN_MOVE | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE);
@@ -221,6 +212,13 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 
 	/* Wait for events and/or terminal input. */
 	while (1) {
+
+		if (close_threads) {
+			pthread_mutex_lock(&mutex_close_threads);
+			exit(EXIT_SUCCESS);
+			pthread_mutex_unlock(&mutex_close_threads);
+		}
+
 		int poll_num = poll(fds, nfds, -1);
 
 		if (poll_num == -1) {
@@ -236,13 +234,13 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 				std::cin >> cmd;
 				std::getline(std::cin, args);
 
-				std::cout << "cmd: " <<  cmd << std::endl << "args: " << args << std::endl; 
+				// std::cout << "cmd: " <<  cmd << std::endl << "args: " << args << std::endl; 
 				execute_payload(serde, socket, cmd, args);
 			}
 			/* directory synchronization */
 			if (fds[1].revents & POLLIN) {
 				/* Inotify events are available. */
-				std::cout << "registered event" << std::endl;
+				// std::cout << "registered event" << std::endl;
 				handle_events(inotify_fd, serde, socket);
 			}
 		}
@@ -253,16 +251,20 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 	close(watch_folder_fd);
 }
 
-
 void *client_loop_data(void *arg) {
 	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
 
 	net::Serializer serde;
 	while(1) {
 		try {
+			if (close_threads) {
+				pthread_mutex_lock(&mutex_close_threads);
+				exit(EXIT_SUCCESS);
+				pthread_mutex_unlock(&mutex_close_threads);
+			}
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
-			std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
+			// std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
 			payload->reply(serde, socket);
 		}
 		catch (std::exception e) {
@@ -278,6 +280,12 @@ int main(int argc, char** argv){
 		exit(2);
 	}
 	int id = utils::random_number();
+
+	std::string userfolder = utils::get_sync_dir_path(std::string(argv[1]));
+
+	// Create an empty directory to receive data from server
+	std::filesystem::remove_all(userfolder);
+	std::filesystem::create_directory(userfolder);
 
 	/* Conexão com o socket de comandos */
 	net::ClientSocket base_socket_commands;

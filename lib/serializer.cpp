@@ -17,7 +17,8 @@ namespace net{
 		const Net::Packet* p = parse(pckt);
 		if(p->op_type() != excepted_op){
 			std::cout << "pacote recebido é: " << utils::pckt_type_to_name(p->op_type()) << std::endl;
-			throw ReceptionException("Pacote recebido não é FileMeta");
+			std::string expected_op_str(utils::pckt_type_to_name(excepted_op)); 
+			throw ReceptionException("Pacote recebido não é " + expected_op_str);
 		}
 		return p;
 	}

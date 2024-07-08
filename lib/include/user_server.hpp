@@ -16,11 +16,15 @@ class UserServer {
         std::shared_ptr<net::Payload> get_data_packet(int id);
         bool is_logged(int id); 
         void unlock_packet();
+        bool is_ready(int id);
+        void set_ready(int id);
     private:
         pthread_mutex_t mutex_session_connection_num = PTHREAD_MUTEX_INITIALIZER;
         pthread_mutex_t mutex_username = PTHREAD_MUTEX_INITIALIZER;
         pthread_mutex_t mutex_data_packets = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_t mutex_synched_files_at_start = PTHREAD_MUTEX_INITIALIZER;
         std::map<int, std::queue<std::shared_ptr<net::Payload>>> data_packets_map;
+        std::map<int, bool> synched_files_at_start;
         int session_connections = 0; 
         std::string username;
         std::vector<int> session_ids;

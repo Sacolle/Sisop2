@@ -11,9 +11,9 @@
 #include <map>
 #include <string>
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <filesystem>
 
 
 #define BACKLOG 10
@@ -150,6 +150,18 @@ void exit_session(const std::string session, UserServer *user, int *id){
 	pthread_exit(NULL);
 }
 
+void update_client (net::Serializer& serde, std::shared_ptr<net::Socket> socket) {
+	std::string path = utils::get_sync_dir_path(socket->get_username());
+	/* For all files in sync_dir, send it to client */
+	for (const auto &entry : std::filesystem::directory_iterator(path)) {
+		std::shared_ptr<net::Upload> file = std::make_shared<net::Upload>(entry.path().filename().string().c_str());
+		file->is_server = true; 
+		file->send(serde, socket);
+		file->await_response(serde, socket);
+	}
+	std::cout << "Ended sync" << std::endl; 
+}
+
 pthread_mutex_t mutex_check_directory_exists = PTHREAD_MUTEX_INITIALIZER;
 
 // void *server_loop(std::shared_ptr<net::Socket> socket)
@@ -169,15 +181,21 @@ void *server_loop_commands(void *arg){
 	
 	pthread_mutex_lock(&mutex_check_directory_exists);
 	// Create directory if it doesn't exist
-	struct stat folder_st = {0};
-	if (stat(userfolder.c_str(), &folder_st) == -1) {
-		mkdir(userfolder.c_str(), 0700);
+	if (!std::filesystem::exists(userfolder)) {
+		std::filesystem::create_directory(userfolder);
 	}
 	pthread_mutex_unlock(&mutex_check_directory_exists);
 
 	int session_num = user_session->get_session_connections_num();
 
 	std::string session = user_session->get_username() + std::string("session_").append(std::to_string(session_num)) + "_command";
+
+	/* Waits for files to be synched at start */
+	while(!user_session->is_ready(id)) {
+		sleep(1); 
+	 }
+	 std::cout << "Starting Command Thread " << session << std::endl; 
+
 	while(1){
 		try{
 			auto buff = socket->read_full_pckt();
@@ -227,33 +245,52 @@ void *server_loop_data(void *arg) {
 
 	pthread_mutex_lock(&mutex_check_directory_exists);
 	// Create directory if it doesn't exist
-	struct stat folder_st = {0};
-	if (stat(userfolder.c_str(), &folder_st) == -1) {
-		mkdir(userfolder.c_str(), 0700);
+	if (!std::filesystem::exists(userfolder)) {
+		std::filesystem::create_directory(userfolder);
 	}
+
 	pthread_mutex_unlock(&mutex_check_directory_exists);
 
 	int session_num = user_session->get_session_connections_num();
 
+	/* Overwrite what the clients has - in order to persist server data */
+	update_client(serde, socket);
+	user_session->set_ready(id); 
+
 	std::string session = user_session->get_username() + std::string("session_").append(std::to_string(session_num)) + "_data";  
 	while(1){
-		auto payload = user_session->get_data_packet(id);
-		if (payload != nullptr) {
-			std::cout << "Data sending: " << session << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
-			if (payload->get_type() == Net::Operation_FileMeta)
-				dynamic_cast<net::Upload*>(payload.get())->is_server = true; 
-			payload->send(serde, socket);
-			payload->await_response(serde, socket);
+		try {
+			auto payload = user_session->get_data_packet(id);
+			if (payload != nullptr) {
+				std::cout << "Data sending: " << session << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
+				if (payload->get_type() == Net::Operation_FileMeta)
+					dynamic_cast<net::Upload*>(payload.get())->is_server = true; 
+				payload->send(serde, socket);
+				payload->await_response(serde, socket);
+			}
+			else {
+				/* Fazer algo pra não ficar o tempo todo travando o mutex de data packet */
+				/* Ou não */
+			}
+			user_session->unlock_packet(); 
+		}catch(const net::CloseConnectionException& e){
+			exit_session(session, user_session, &id);
+		}catch(const net::ReceptionException& e){
+			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
+		}catch(const std::ios_base::failure& e){
+			try {
+				auto err_response = serde.build_response(Net::Status_Error, e.what());
+				socket->send_checked(err_response);
+			}catch(const net::CloseConnectionException& e){
+				exit_session(session, user_session, &id);
+			}catch(const std::exception& e){
+				std::cout << e.what() << '\n';
+			}
+		}catch(std::exception e){
+			std::cerr << e.what() << std::endl;
 		}
-		else {
-			/* Fazer algo pra não ficar o tempo todo travando o mutex de data packet */
-			/* Ou não */
-		}
-		user_session->unlock_packet(); 
 	}
 }
-
-
 
 int main() {
 

@@ -3,6 +3,9 @@
 
 #include <iostream>
 #include <cstdio>
+#include <filesystem>
+#include <sys/stat.h>
+
 
 #include "utils.hpp"
 #include "defines.hpp"
@@ -23,7 +26,7 @@ namespace net {
 			throw std::ios_base::failure("Falha em abrir o arquivo");
 		}
 		file.seekg(0);
-		std::cout << "arquivo aberto corretamente" << std::endl;
+		// std::cout << "arquivo aberto corretamente" << std::endl;
 	}
 
 	ssize_t SyncFile::open_read(const std::string& _filename, const std::string& dir_name){
@@ -88,7 +91,7 @@ namespace net {
 			//mas ocorre um erro mesmo assim
 			throw TransmissionException();
 		}else{
-			std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
+			// std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
 		}
 	}
 
@@ -214,14 +217,14 @@ namespace net {
 		auto response = pckt->op_as_Response();
 		switch (response->status()){
 		case Net::Status_Ok:{
-			std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
+			// std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
 			net::Upload upload_file(filename.c_str());
 			upload_file.send(serde, socket);
 			upload_file.await_response(serde, socket);
 			return;
 		} break;
 		case Net::Status_SameFile:
-			std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
+			// std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
 			return;
 			break;
 		default:
@@ -324,7 +327,7 @@ namespace net {
 		auto pckt = serde.parse_expect(buff, Net::Operation_Response);
 		auto response = pckt->op_as_Response();
 		if(response->status() != Net::Status_Ok){
-			std::cerr << response->msg() << std::endl; 
+			std::cerr << response->msg()->c_str() << std::endl; 
 			throw InvalidConnectionException(response->msg()->c_str());
 		}else {
 			std::cout << "Conexão estabelecida corretamente:\n\tUsername: " 
@@ -347,10 +350,23 @@ namespace net {
 
 	//reads the username folder and returns a response with the name of the files there
 	void ListFiles::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-		std::string msg("Nomes dos arquivos do cliente:");
-		//TODO: ler os arquivos
+		std::string msg = "List of server files: \n";  
 		try{
-			/* code */
+			std::string path = utils::get_sync_dir_path(socket->get_username());
+			for (const auto &entry : std::filesystem::directory_iterator(path)) {
+				struct stat sb;
+				if (lstat(entry.path().string().c_str(), &sb) == -1) {
+               		perror("lstat");
+					auto pckt = serde.build_response(Net::Status_Error, "Falha em ler os arquivos da pasta");
+					socket->send_checked(pckt);
+					return;
+           		}
+				msg += "name: " + entry.path().filename().string(); 
+				msg += "\nctime: " + std::string(ctime(&sb.st_ctime));
+           		msg += "atime: " +  std::string(ctime(&sb.st_atime));
+				msg += "mtime: " +  std::string(ctime(&sb.st_mtime));
+				msg += "\n"; 
+			}
 		}
 		catch(const std::ios_base::failure& e){
 			std::cerr << e.what() << '\n';
@@ -362,6 +378,13 @@ namespace net {
 		auto pckt = serde.build_response(Net::Status_Ok, msg);
 		socket->send_checked(pckt);
 	}
+
+	void ListFiles::await_response(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = socket->read_full_pckt();
+		auto ping = serde.parse_expect(pckt, Net::Operation_Response)->op_as_Response();
+		std::cout << ping->msg()->c_str() << std::endl;
+	}
+
 
 	Exit::Exit(): Payload(Net::Operation_ListFiles){}
 

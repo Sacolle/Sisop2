@@ -42,6 +42,9 @@ void UserServer::add_session(int id) {
     }
     session_connections++;
     session_ids.push_back(id);
+    pthread_mutex_lock(&(this->mutex_synched_files_at_start));
+    synched_files_at_start[id] = false; 
+    pthread_mutex_unlock(&(this->mutex_synched_files_at_start));
     pthread_mutex_unlock(&(this->mutex_session_connection_num));
 }
 
@@ -77,6 +80,19 @@ std::shared_ptr<net::Payload> UserServer::get_data_packet(int id) {
         payload_ = nullptr;
     }
     return payload_;
+}
+
+bool UserServer::is_ready(int id){
+    pthread_mutex_lock(&(this->mutex_synched_files_at_start));
+    bool ret = synched_files_at_start[id];
+    pthread_mutex_unlock(&(this->mutex_synched_files_at_start));
+    return ret; 
+}
+
+void UserServer::set_ready(int id){
+    pthread_mutex_lock(&(this->mutex_synched_files_at_start));
+    synched_files_at_start[id] = true;
+    pthread_mutex_unlock(&(this->mutex_synched_files_at_start));
 }
 
 void UserServer::unlock_packet(){
