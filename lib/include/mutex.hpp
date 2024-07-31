@@ -3,13 +3,13 @@
 
 #include <pthread.h>
 
-namespace sync {
-    
+namespace net{
+
     template <typename T>
     class Lock {
         public:
-            inline unlock(){
-				pthread_mutex_unlock(&mutex);
+            inline void unlock(){
+				pthread_mutex_unlock(mutex);
 			}
             ~Lock(){
 				unlock();
@@ -19,17 +19,16 @@ namespace sync {
             inline T* get(){ return ptr; }
 
         protected:
-            Lock(T* ptr, pthread_mutex_t mutex): ptr(ptr), mutex(mutex){
-				pthread_mutex_lock(&mutex);
+            Lock(T* ptr, pthread_mutex_t *mutex): ptr(ptr), mutex(mutex){
+				pthread_mutex_lock(mutex);
 			}
 
         private:
 			T* ptr = nullptr;
-			pthread_mutex_t mutex;
+			pthread_mutex_t *mutex;
 
-        friend class Mutex<T>;   
+        template <typename B> friend class Mutex;   
     };
-
 
 
     template <typename T>
@@ -41,7 +40,7 @@ namespace sync {
 			}
 
 			inline Lock<T> lock(){
-				return Lock(ptr);
+				return Lock(ptr, &mutex);
 			}
 
         private:

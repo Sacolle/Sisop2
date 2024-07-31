@@ -1,3 +1,5 @@
+#pragma once
+
 #include <pthread.h>
 #include <payload.hpp>
 #include <queue>
@@ -27,5 +29,5 @@ class UserServer {
         std::map<int, bool> synched_files_at_start;
         int session_connections = 0; 
         std::string username;
-        std::vector<int> session_ids;
+        std::vector<int> session_ids; //change to set
 };

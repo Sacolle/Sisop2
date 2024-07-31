@@ -17,32 +17,6 @@
 
 
 #define BACKLOG 10
-// Arquivo Histórico .fbs == .facebook 
-// Arquivo histórico: "lacall"
-
-//read an operation:
-// supoem-se que já conectou -> sabe-se o nome do usuário e validou o nº de conexões
-/*
-	## REQ
-	- listfiles -> sends the names of the files in the sync_dir
-	- dowload -> checks if has the file, then sends the file to the client
-	- delete -> deletes the file and sends a response 
-	- connect -> saves the user name and sends an ok
-		|> all receives a simple text and respondes with simple text
-	
-	- get_sync_dir -> sends the files to the client
-		|> receives simple text, sends a lot of files
-		|> needs a finish message -> finished sending or 
-			an inicial message, telling how many files will be sent
-
-	- upload -> receives the file from the client and saves it in it's sync_dir
-		|> receives a file and sends a simple ok
-
-	## RES
-	- OK + data -> delete, listfiles, upload
-	- OK + file -> dowload, get_sync_dir
-	- ERR
-*/
 
 void exit_session(const std::string session, UserServer *user, int *id); 
 
@@ -222,9 +196,7 @@ void *server_loop_commands(void *arg){
 		}catch(std::exception e){
 			std::cerr << e.what() << std::endl;
 		}
-		
 	}
-
 }
 
 /* Loop para a thread de sincronização de arquivos entre sessions */
@@ -292,11 +264,11 @@ void *server_loop_data(void *arg) {
 	}
 }
 
-int main() {
 
+int main() {
 	net::ServerSocket socket_command_listen_server;
 	net::ServerSocket socket_data_listen_server;
-	/* Conecta a socket de comandos */
+	// Conecta a socket de comandos
 	try{
 		socket_command_listen_server.open(PORT_COMMAND, BACKLOG);
 	}
@@ -304,7 +276,7 @@ int main() {
 		std::cerr << e.what() << '\n';
 		exit(1);
 	}
-	/* Conecta a socket de dados */
+	// Conecta a socket de dados
 	try{
 		socket_data_listen_server.open(PORT_DATA, BACKLOG);
 	}
@@ -316,8 +288,8 @@ int main() {
 		try {
 			auto s_commands = socket_command_listen_server.accept();
 			auto s_data = socket_data_listen_server.accept();
-			/* Cria nova thread e começa o server loop nela */
-			/* A thread atual se mantém a espera de conexão */
+			// Cria nova thread e começa o server loop nela 
+			// A thread atual se mantém a espera de conexão 
 			if (s_commands != nullptr){
 				s_commands->print_address();
 				pthread_t t_commands;
@@ -335,6 +307,6 @@ int main() {
 			std::cerr << e.what() << '\n';
 		}
 	}
-    return 0;
+	return 0;
 }
 
