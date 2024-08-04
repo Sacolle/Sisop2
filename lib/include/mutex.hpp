@@ -16,7 +16,7 @@ namespace net{
 			}
 
             inline T* operator->(){ return ptr; }
-            inline T* get(){ return ptr; }
+            inline T& get(){ return *ptr; }
 
         protected:
             Lock(T* ptr, pthread_mutex_t *mutex): ptr(ptr), mutex(mutex){
