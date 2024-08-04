@@ -49,7 +49,7 @@ namespace net{
 			}
 		private:
 			UserSession& get_user_session(const std::string& username);
-			Controller() : users_sessions(Mutex(new std::map<std::string, UserSession>())) {}
+			Controller() : users_sessions(Mutex(std::map<std::string, UserSession>())) {}
 			Mutex<std::map<std::string, UserSession>> users_sessions;
 
 	};

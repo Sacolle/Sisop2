@@ -5,9 +5,9 @@ namespace net{
 
 	UserSession::UserSession(std::string username): 
 		username(username), 
-		synched_files_at_start(Mutex(new std::map<int, bool>())),
-		session_ids(Mutex(new std::set<int>())),
-		data_packets_map(Mutex(new std::map<int, std::queue<std::shared_ptr<net::Payload>>>())){}
+		synched_files_at_start(Mutex(std::map<int, bool>())),
+		session_ids(Mutex(std::set<int>())),
+		data_packets_map(Mutex(std::map<int, std::queue<std::shared_ptr<net::Payload>>>())){}
 
 	void UserSession::set_files_synched(int id){
 		auto files_synched = synched_files_at_start.lock(); 
@@ -29,6 +29,7 @@ namespace net{
 		auto ids = session_ids.lock();
 		return ids->size();
 	}
+
 	bool UserSession::has_session(int id){
 		auto ids = session_ids.lock();
 		return ids->count(id) == 1;
@@ -111,5 +112,4 @@ namespace net{
 	void Controller::set_files_synched(const std::string& username, int id){
 		get_user_session(username).set_files_synched(id); 
 	}
-	
 }
