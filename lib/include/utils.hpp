@@ -53,6 +53,8 @@ namespace utils {
 	std::string get_sync_dir_path(std::string username);
 
 	int random_number();
+
+	void test_and_set_folder(const std::string& foldername); 
 }
 
 #endif

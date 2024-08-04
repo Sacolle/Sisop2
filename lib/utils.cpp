@@ -1,6 +1,9 @@
 #include "utils.hpp"
+#include <iostream> 
 
 #include <string>
+#include <filesystem>
+#include <pthread.h>
 
 #define TOSTR(x) # x
 #define ENUM_TO_STR_CASE(val) case val: return TOSTR(val) 
@@ -53,4 +56,17 @@ namespace utils {
 		srand(time(NULL));
 		return rand();
 	}
+
+	void test_and_set_folder(const std::string& foldername){
+        //NOTE: creio q o inicializador estatico deve dar certo,
+        // e n dar problema com o inicilizador do mutex
+        static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+        pthread_mutex_lock(&mutex);
+        // Create directory if it doesn't exist
+        if (!std::filesystem::exists(foldername)) {
+            std::filesystem::create_directory(foldername);
+        }
+        pthread_mutex_unlock(&mutex);
+    }
 }
