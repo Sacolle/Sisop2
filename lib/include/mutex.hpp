@@ -14,7 +14,9 @@ namespace net{
             ~Lock(){
 				unlock();
 			}
-            // TODO Lock could be copied, generating a dead_lock. Probably should delete all copy constructors and operators
+            
+			Lock(Lock const&) = delete;
+			void operator=(Lock const&) = delete;
 
             inline T* operator->(){ return ptr; }
             inline T& get(){ return *ptr; }
@@ -35,17 +37,13 @@ namespace net{
     template <typename T>
     class Mutex {
         public:
-            Mutex(T* ptr): ptr(ptr), mutex(PTHREAD_MUTEX_INITIALIZER){} 
-            ~Mutex(){
-				delete ptr;
-			}
-
+            Mutex(T val): val(val), mutex(PTHREAD_MUTEX_INITIALIZER){} 
 			inline Lock<T> lock(){
-				return Lock(ptr, &mutex);
+				return Lock(&val, &mutex);
 			}
 
         private:
-            T* ptr = nullptr;
+            T val;
 			pthread_mutex_t mutex;
     };
 }
