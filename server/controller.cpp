@@ -6,16 +6,22 @@ namespace net{
 	UserSession::UserSession(std::string username): 
 		username(username), 
 		synched_files_at_start(Mutex(new std::map<int, bool>())),
-		session_ids(Mutex(new std::set<int>())){}
+		session_ids(Mutex(new std::set<int>())),
+		data_packets_map(Mutex(new std::map<int, std::queue<std::shared_ptr<net::Payload>>>())){}
 
 	void UserSession::set_files_synched(int id){
 		auto files_synched = synched_files_at_start.lock(); 
+		if (files_synched->count(id) == 0) {
+			throw std::runtime_error("Session " +  std::to_string(id) +  " not logged for user " +  username); 
+		}
 		files_synched.get()[id] = true; 
 	}
 
 	bool UserSession::is_files_synched(int id){
 		auto files_synched = synched_files_at_start.lock(); 
-		std::cout << "is_file"  << files_synched.get()[id] << std::endl; // TODO debug remove
+		if (files_synched->count(id) == 0) {
+			throw std::runtime_error("Session " +  std::to_string(id) +  " not logged for user " +  username); 
+		}
 		return files_synched.get()[id];
 	}
 
@@ -58,8 +64,8 @@ namespace net{
 		}
 
 		ids->insert(id); 
-		data_packets_map.get()[id] = std::queue<std::queue<std::shared_ptr<net::Payload>>>(); 
-		synched_files_at_start.get()[id] = false; 
+		data_packets_map.lock().get()[id] = std::queue<std::shared_ptr<net::Payload>>(); 
+		synched_files_at_start.lock().get()[id] = false; 
 		return true;
 	}
 
@@ -68,7 +74,7 @@ namespace net{
 		if (user_sessions->count(username) == 0){
 			user_sessions->try_emplace(username, username);
 		}
-		auto& user_session =  user_sessions.get()[username]; 
+		UserSession& user_session =  user_sessions->at(username); 
 		// Already logged, return true
 		if (user_session.has_session(id)) {
 			return true;
@@ -81,7 +87,7 @@ namespace net{
 		if (user_sessions->count(username) == 0){
 			return false; 
 		}
-		auto& user_session =  user_sessions.get()[username]; 
+		auto& user_session =  user_sessions->at(username); 
 		bool ret = user_session.remove_session(id); 
 		if (user_session.get_session_connections_num() == 0){
 			user_sessions->erase(username); 
@@ -89,5 +95,21 @@ namespace net{
 		return ret; 
 	}
 
+	UserSession& Controller::get_user_session(const std::string& username){
+		auto user_sessions = users_sessions.lock();
+		if (user_sessions->count(username) == 0){
+			throw std::runtime_error("User " + username + " does not have any session logged"); 
+		}
+		return user_sessions->at(username); 
+	}
+
+
+	bool Controller::is_files_synched(const std::string& username, int id){
+		return get_user_session(username).is_files_synched(id);
+	}
+
+	void Controller::set_files_synched(const std::string& username, int id){
+		get_user_session(username).set_files_synched(id); 
+	}
 	
 }

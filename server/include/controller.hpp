@@ -37,6 +37,8 @@ namespace net{
 			bool add_session(std::string username, int id); 
 			bool remove_session(const std::string& username, int id);
 
+			bool is_files_synched(const std::string& username, int id);
+			void set_files_synched(const std::string& username, int id);
 
 			Controller(Controller const&) = delete;
 			void operator=(Controller const&) = delete;
@@ -46,6 +48,7 @@ namespace net{
 				return instance;
 			}
 		private:
+			UserSession& get_user_session(const std::string& username);
 			Controller() : users_sessions(Mutex(new std::map<std::string, UserSession>())) {}
 			Mutex<std::map<std::string, UserSession>> users_sessions;
 
