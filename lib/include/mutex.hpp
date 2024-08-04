@@ -14,6 +14,7 @@ namespace net{
             ~Lock(){
 				unlock();
 			}
+            // TODO Lock could be copied, generating a dead_lock. Probably should delete all copy constructors and operators
 
             inline T* operator->(){ return ptr; }
             inline T& get(){ return *ptr; }

@@ -17,22 +17,26 @@ namespace net{
 			bool is_files_synched(int id);
 			void set_files_synched(int id);
 
+			bool add_session(int id); 
+			bool remove_session(int id);
+
 			int get_session_connections_num(); 
 			bool has_session(int id); 
 
-			UserSession(const std::string& username);
+			UserSession(std::string username);
 
 			const std::string username;
 		private:
-			std::map<int, std::queue<std::shared_ptr<net::Payload>>> data_packets_map;
+			Mutex<std::map<int, std::queue<std::shared_ptr<net::Payload>>>> data_packets_map;
 			Mutex<std::map<int, bool>> synched_files_at_start;
-			Mutex<std::set<int>> session_ids; //change to set
+			Mutex<std::set<int>> session_ids; 
 	};
 
 	class Controller {
 		public:
-			void add_session(); //also check for number of conections
-			void remove_session();
+			bool add_session(std::string username, int id); 
+			bool remove_session(const std::string& username, int id);
+
 
 			Controller(Controller const&) = delete;
 			void operator=(Controller const&) = delete;
@@ -42,8 +46,8 @@ namespace net{
 				return instance;
 			}
 		private:
-			Controller(){}
-			std::map<std::string, UserSession> users_sessions;
+			Controller() : users_sessions(Mutex(new std::map<std::string, UserSession>())) {}
+			Mutex<std::map<std::string, UserSession>> users_sessions;
 
 	};
 }
