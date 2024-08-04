@@ -10,9 +10,8 @@
 namespace net{
 	class UserSession {
 		public:
-			void add_data_packet(std::shared_ptr<net::Payload> payload, int id);
-			std::shared_ptr<net::Payload> get_data_packet(int id);
-			//void unlock_packet();
+			void process_data_packet(int id, Serializer& serde, std::shared_ptr<Socket> socket);
+			void add_data_packet(int id, std::shared_ptr<net::Payload> payload); 
 
 			bool is_files_synched(int id);
 			void set_files_synched(int id);
@@ -39,6 +38,9 @@ namespace net{
 
 			bool is_files_synched(const std::string& username, int id);
 			void set_files_synched(const std::string& username, int id);
+
+			void process_data_packet(const std::string& username, int id, Serializer& serde, std::shared_ptr<Socket> socket);
+			void add_data_packet(const std::string& username, int id, std::shared_ptr<net::Payload> payload); 
 
 			Controller(Controller const&) = delete;
 			void operator=(Controller const&) = delete;

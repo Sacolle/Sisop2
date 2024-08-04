@@ -16,6 +16,33 @@ namespace net{
 		}
 		files_synched.get()[id] = true; 
 	}
+	void UserSession::add_data_packet(int id, std::shared_ptr<net::Payload> payload){
+		auto data_packets_map_lock =  data_packets_map.lock(); 
+		if (data_packets_map_lock->count(id) == 0){
+			throw std::runtime_error("Session " +  std::to_string(id) +  " not logged for user " +  username); 
+		}
+		auto& queue = data_packets_map_lock.get()[id];
+		queue.push(payload); 
+	}
+
+	void UserSession::process_data_packet(int id, Serializer& serde, std::shared_ptr<Socket> socket){
+		auto data_packets_map_lock =  data_packets_map.lock(); 
+		if (data_packets_map_lock->count(id) == 0){
+			throw std::runtime_error("Session " +  std::to_string(id) +  " not logged for user " +  username); 
+		}
+		auto& queue = data_packets_map_lock.get()[id];
+		if (queue.empty()) {
+			return; 
+		}
+		auto& payload = queue.front();
+		queue.pop();
+		if (payload->get_type() == Net::Operation_FileMeta) {
+			dynamic_cast<net::Upload*>(payload.get())->is_server = true; 
+		}
+		payload->send(serde, socket);
+		payload->await_response(serde, socket);
+	}
+
 
 	bool UserSession::is_files_synched(int id){
 		auto files_synched = synched_files_at_start.lock(); 
@@ -104,12 +131,19 @@ namespace net{
 		return user_sessions->at(username); 
 	}
 
-
 	bool Controller::is_files_synched(const std::string& username, int id){
 		return get_user_session(username).is_files_synched(id);
 	}
 
 	void Controller::set_files_synched(const std::string& username, int id){
 		get_user_session(username).set_files_synched(id); 
+	}
+
+	void Controller::process_data_packet(const std::string& username, int id, Serializer& serde, std::shared_ptr<Socket> socket){
+		get_user_session(username).process_data_packet(id, serde, socket); 
+	}
+
+	void Controller::add_data_packet(const std::string& username, int id, std::shared_ptr<net::Payload> payload){
+		get_user_session(username).add_data_packet(id, payload); 
 	}
 }
