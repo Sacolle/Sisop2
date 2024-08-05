@@ -1,4 +1,5 @@
 #include "controller.hpp"
+#include <iostream>
 #include <exceptions.hpp>
 
 namespace net{
@@ -84,10 +85,12 @@ namespace net{
 		auto ids = session_ids.lock();
 		// Trying to add session already logged
 		if (ids->count(id)){
+			std::cout << "Trying to add session already logged: " << username << std::endl;
 			return false; 
 		}
 		// limit of sessions breached, one user must have at maximum 2 connections
 		if (ids->size() > 1) {
+			std::cout << "Limit of sessions breached, one user must have at maximum 2 connections: " << username << std::endl;
 			return false; 
 		}
 

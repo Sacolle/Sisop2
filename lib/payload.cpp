@@ -312,7 +312,7 @@ namespace net {
 			msg += " com id único ";
 			msg += std::to_string(id);
 		} else {
-			msg += "Limite de conexões da sessão ultrapassado";
+			msg += "Connection failed!";
 		}
 		std::string port(PORT_DATA); 
 		FlatBufferBuilder*  pckt;

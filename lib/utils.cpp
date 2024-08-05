@@ -57,7 +57,8 @@ namespace utils {
 		return rand();
 	}
 
-	void test_and_set_folder(const std::string& foldername){
+	void test_and_set_folder(const std::string& username){
+		std::string foldername = get_sync_dir_path(username); 
         //NOTE: creio q o inicializador estatico deve dar certo,
         // e n dar problema com o inicilizador do mutex
         static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
