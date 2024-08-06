@@ -46,7 +46,7 @@ namespace utils {
 		return result;
 	}
 
-	std::string get_sync_dir_path(std::string username){
+	std::string get_sync_dir_path(const std::string& username){
 		std::string s("sync_dir_");
 		s.append(username);
 		return s;

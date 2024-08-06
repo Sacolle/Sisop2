@@ -19,12 +19,7 @@
 #define BACKLOG 10
 
 
-net::Controller& controller = net::Controller::getInstance();  
 
-void exit_session(const std::string username, int id){
-	// TODO should disconnect the other thread 
-	controller.remove_session(username, id);
-}
 
 
 // Connect user's session if the user does not have more than 1 session and the id of the session is unique
@@ -39,6 +34,8 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	);
 	*id = connect_raw->id(); 
 	connect.command_connection = is_command; 
+
+	auto& controller = net::Controller::getInstance();  
 	if (!controller.add_session(connect.username, connect.id)){
 		connect.valid_connection = false; 
 		connect.reply(serde, socket);
@@ -52,14 +49,6 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	auto msg = Net::GetSizePrefixedPacket(buff);
 
 	switch (msg->op_type()){
-	/*case Net::Operation_Connect: {
-		auto payload = msg->op_as_Connect();
-		return std::make_unique<net::Connect>(
-			payload->username()->c_str(),
-			payload->type(),
-			payload->id()
-		);
-	} break;*/
 	case Net::Operation_ListFiles: {
 		return std::make_shared<net::ListFiles>();
 	} break;
@@ -96,7 +85,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 			payload->hash()
 		);
 		//TODO:
-		//return std::make_unique
+		//return std::make_shared
 	} break;
 	case Net::Operation_FileData:
 	case Net::Operation_Response:
@@ -109,19 +98,6 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	//NOTE: could make a trycatch which catches and sends the error after
 }
 
-void update_client (net::Serializer& serde, std::shared_ptr<net::Socket> socket) {
-	std::string path = utils::get_sync_dir_path(socket->get_username());
-	/* For all files in sync_dir, send it to client */
-	for (const auto &entry : std::filesystem::directory_iterator(path)) {
-		std::shared_ptr<net::Upload> file = std::make_shared<net::Upload>(entry.path().filename().string().c_str());
-		file->is_server = true; 
-		file->send(serde, socket);
-		file->await_response(serde, socket);
-	}
-	std::cout << "Ended sync" << std::endl; 
-}
-
-pthread_mutex_t mutex_check_directory_exists = PTHREAD_MUTEX_INITIALIZER;
 
 // void *server_loop(std::shared_ptr<net::Socket> socket)
 void *server_loop_commands(void *arg){
@@ -138,11 +114,13 @@ void *server_loop_commands(void *arg){
 	utils::test_and_set_folder(username); 
 
 	std::string session = "Session " + username + " [" + std::to_string(id) + "]"; 
+
+	auto& controller = net::Controller::getInstance();
 	/* Waits for files to be synched at start */
 	while(!controller.is_files_synched(username, id)) {
 		sleep(1); 
-	 }
-	 std::cout << "Starting Command Thread " << session << std::endl; 
+	}
+	std::cout << "Starting Command Thread " << session << std::endl; 
 
 	while(1){
 		try{
@@ -151,10 +129,10 @@ void *server_loop_commands(void *arg){
 			std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
 			payload->reply(serde, socket);
 			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
-				controller.add_data_packet(username, id, payload);
+				controller.add_data_packet(username, payload);
 			}
 		}catch(const net::CloseConnectionException& e){
-			exit_session(session, id);
+			controller.remove_session(session, id);
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
 			//TODO: await a bit, flush the socket and send a ping to see if its ok
@@ -163,14 +141,32 @@ void *server_loop_commands(void *arg){
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
-				exit_session(session, id);
+				controller.remove_session(session, id);
 			}catch(const std::exception& e){
-				std::cout << e.what() << '\n';
+				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
+				controller.remove_session(session, id);
 			}
-		}catch(std::exception e){
-			std::cerr << e.what() << std::endl;
+		}catch(std::exception& e){
+			std::cerr << "Generic exception at top level, unacounted failure at server_loop_commands of "
+			<< username << ":\n\t"
+			<< e.what() 
+			<< ".\n\tExiting session..."
+			<< std::endl;
+			exit(1);
 		}
 	}
+}
+
+void update_client (net::Serializer& serde, std::shared_ptr<net::Socket> socket) {
+	std::string path = utils::get_sync_dir_path(socket->get_username());
+	/* For all files in sync_dir, send it to client */
+	for (const auto &entry : std::filesystem::directory_iterator(path)) {
+		net::Upload file(entry.path().filename().string().c_str());
+		file.is_server = true; 
+		file.send(serde, socket);
+		file.await_response(serde, socket);
+	}
+	std::cout << "Ended sync" << std::endl; 
 }
 
 /* Loop para a thread de sincronização de arquivos entre sessions */
@@ -190,18 +186,31 @@ void *server_loop_data(void *arg) {
 
 	/* Overwrite what the clients has - in order to persist server data */
 	update_client(serde, socket);
+
+	auto& controller = net::Controller::getInstance();
 	controller.set_files_synched(username, id);  
 
 	std::string session = "Session " + username + " [" + std::to_string(id) + "]"; 
 
+	std::cout << "Starting Data Thread " << session << std::endl; 
+
 	while(1){
 		try {
-			controller.process_data_packet(username, id, serde, socket);
-			sleep(1);  // TODO should be a thread_cond	
-			/* Fazer algo pra não ficar o tempo todo travando o mutex de data packet */
-			/* Ou não */
+			auto payload_opt = controller.get_data_packet(username, id);
+			if(payload_opt.has_value()){
+				std::cout << "Data thread has packet: " 
+				<< utils::pckt_type_to_name(payload_opt.value()->get_type()) << std::endl;
+
+
+				auto payload = payload_opt.value();
+				if (payload->get_type() == Net::Operation_FileMeta) {
+					static_cast<net::Upload*>(payload.get())->is_server = true; 
+				}
+				payload->send(serde, socket);
+				payload->await_response(serde, socket);
+			}
 		}catch(const net::CloseConnectionException& e){
-			exit_session(username, id);
+			controller.remove_session(username, id);
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
 		}catch(const std::ios_base::failure& e){
@@ -209,12 +218,18 @@ void *server_loop_data(void *arg) {
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
-				exit_session(username, id);
+				controller.remove_session(username, id);
 			}catch(const std::exception& e){
-				std::cout << e.what() << '\n';
+				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
+				controller.remove_session(session, id);
 			}
 		}catch(std::exception e){
-			std::cerr << e.what() << std::endl;
+			std::cerr << "Generic exception at top level, unacounted failure at server_loop_data of "
+			<< username << ":\n\t"
+			<< e.what() 
+			<< ".\n\tExiting session..."
+			<< std::endl;
+			exit(1);
 		}
 	}
 }

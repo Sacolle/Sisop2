@@ -66,10 +66,12 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	case Net::Operation_FileMeta: {
 		auto payload = msg->op_as_FileMeta();
 		//std::cout << "filemeta" << std::endl;
-		return std::make_shared<net::Upload>(
+		auto upload = std::make_shared<net::Upload>(
 			payload->name()->c_str(),
 			payload->size()
 		);
+		upload->is_server = true;
+		return upload;
 	} break;
 	case Net::Operation_ListFiles:
 	case Net::Operation_Ping:
@@ -77,8 +79,17 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	case Net::Operation_Download:
 	case Net::Operation_SendFileRequest:
 	case Net::Operation_FileData:
+		throw net::ReceptionException(
+			std::string("Unexpected packet at Payload::parse_from_buffer ")
+				.append(utils::pckt_type_to_name(msg->op_type()))
+		);
+		break;
 	case Net::Operation_Response:
-		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ").append(utils::pckt_type_to_name(msg->op_type())));
+		throw net::ReceptionException(
+			std::string("Unexpected packet Payload::parse_from_buffer ")
+				.append(utils::pckt_type_to_name(msg->op_type()))
+				.append(msg->op_as_Response()->msg()->str())
+		);
 		break;
 	default:
 		//didn't match any operation known
@@ -264,11 +275,11 @@ void *client_loop_data(void *arg) {
 			}
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
-			// std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
+			std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
 			payload->reply(serde, socket);
 		}
-		catch (std::exception e) {
-			std::cerr << e.what() << std::endl;
+		catch (std::exception& e) {
+			std::cerr << "uncaught exception: "  << e.what() << std::endl;
 		}
 	}
 }
