@@ -15,12 +15,7 @@
 #include <pthread.h>
 #include <filesystem>
 
-
 #define BACKLOG 10
-
-
-
-
 
 // Connect user's session if the user does not have more than 1 session and the id of the session is unique
 std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, int* id, bool is_command){
@@ -89,7 +84,8 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	} break;
 	case Net::Operation_FileData:
 	case Net::Operation_Response:
-		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ").append(utils::pckt_type_to_name(msg->op_type())));
+		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ")
+			.append(utils::pckt_type_to_name(msg->op_type())));
 		break;
 	default:
 		//didn't match any operation known
@@ -132,7 +128,11 @@ void *server_loop_commands(void *arg){
 				controller.add_data_packet(username, payload);
 			}
 		}catch(const net::CloseConnectionException& e){
-			controller.remove_session(session, id);
+	
+			std::cout << controller.remove_session(username, id) << std::endl;
+			std::cout << "Saindo da sessão de comandos de " << session << std::endl;
+			pthread_exit(0);
+
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
 			//TODO: await a bit, flush the socket and send a ping to see if its ok
@@ -141,10 +141,15 @@ void *server_loop_commands(void *arg){
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
-				controller.remove_session(session, id);
+				
+				controller.remove_session(username, id);
+				std::cout << "Saindo da sessão de comandos de " << session << std::endl;
+				pthread_exit(0);
+
 			}catch(const std::exception& e){
 				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
-				controller.remove_session(session, id);
+				controller.remove_session(username, id);
+				pthread_exit(0);
 			}
 		}catch(std::exception& e){
 			std::cerr << "Generic exception at top level, unacounted failure at server_loop_commands of "
@@ -210,7 +215,17 @@ void *server_loop_data(void *arg) {
 				payload->await_response(serde, socket);
 			}
 		}catch(const net::CloseConnectionException& e){
+			
 			controller.remove_session(username, id);
+			std::cout << "Saindo da sessão de dados de " << session << std::endl;
+			pthread_exit(0);
+
+		}catch(const net::CloseSessionException& e){ //ocorre quando não há sessão correspondente
+			//normalmente quando o cmd thread quita
+			//emitido por controller.get_data_packet
+			std::cout << "Saindo da sessão de dados de " << session << std::endl;
+			pthread_exit(0);
+
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
 		}catch(const std::ios_base::failure& e){
@@ -218,12 +233,19 @@ void *server_loop_data(void *arg) {
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
+				
 				controller.remove_session(username, id);
+				std::cout << "Saindo da sessão de dados de " << session << std::endl;
+				pthread_exit(0);
+
 			}catch(const std::exception& e){
+
 				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
-				controller.remove_session(session, id);
+				controller.remove_session(username, id);
+				pthread_exit(0);
+
 			}
-		}catch(std::exception e){
+		}catch(std::exception& e){
 			std::cerr << "Generic exception at top level, unacounted failure at server_loop_data of "
 			<< username << ":\n\t"
 			<< e.what() 

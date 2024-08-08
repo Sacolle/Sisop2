@@ -1,4 +1,5 @@
 #include "controller.hpp"
+#include "exceptions.hpp"
 #include <iostream>
 #include <exceptions.hpp>
 
@@ -64,6 +65,13 @@ namespace net{
 		session_ids.insert(id); 
 		data_packets_map[id] = std::queue<std::shared_ptr<net::Payload>>(); 
 		synched_files_at_start[id] = false; 
+
+		std::cout << "ids: [";
+		for(auto i: session_ids){
+			std::cout << i << " ";
+		}
+		std::cout << "]" << std::endl;
+
 		return true;
 	}
 
@@ -75,6 +83,7 @@ namespace net{
 		UserSession& user_session = user_sessions->at(username); 
 		// Already logged, return true
 		if (user_session.session_ids.count(id) != 0) {
+			std::cout << "already logged in" << std::endl;
 			return true;
 		}
 		return user_session.add_session(id); 
@@ -85,7 +94,7 @@ namespace net{
 		if (user_sessions->count(username) == 0){
 			return false; 
 		}
-		auto& user_session =  user_sessions->at(username); 
+		auto& user_session = user_sessions->at(username); 
 		bool ret = user_session.remove_session(id); 
 		if (user_session.session_ids.size() == 0){
 			user_sessions->erase(username); 
@@ -108,9 +117,14 @@ namespace net{
 	// std::runtime_error
 	std::optional<std::shared_ptr<net::Payload>> Controller::get_data_packet(const std::string& username, int id){
 		auto user_sessions = users_sessions.lock();
+		if(user_sessions->count(username) == 0){
+			throw net::CloseSessionException(); 
+		}
+
 		auto& session = user_sessions->at(username);
 		if (session.session_ids.count(id) == 0){
-			throw std::runtime_error("Session " +  std::to_string(id) +  " not logged for user " +  username); 
+			//"get_data_packet: Session " +  std::to_string(id) +  " not logged for user " +  username
+			throw net::CloseSessionException(); 
 		}
 		auto& queue = session.data_packets_map[id];
 		if (queue.empty()) {

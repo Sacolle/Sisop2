@@ -51,6 +51,8 @@ net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	}catch(const std::exception& e){
 		std::cout << "Error: " << e.what() << std::endl;
 	}
+
+	return nullptr;
 }
 
 std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
@@ -159,6 +161,7 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 			event = (const struct inotify_event *) ptr;
 
 			const char* filename = event->name;
+			//std::cout << "[FILE] " << filename << std::endl;
 			if(utils::is_tmp_file(filename)){
 				continue;
 			}
@@ -278,7 +281,11 @@ void *client_loop_data(void *arg) {
 			std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
 			payload->reply(serde, socket);
 		}
-		catch (std::exception& e) {
+		catch(const net::CloseConnectionException& e){
+			std::cout << "saindo do thread de dados. " << std::endl;
+			pthread_exit(0);
+
+		}catch (std::exception& e) {
 			std::cerr << "uncaught exception: "  << e.what() << std::endl;
 		}
 	}

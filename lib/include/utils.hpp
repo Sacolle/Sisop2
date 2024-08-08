@@ -43,7 +43,13 @@ namespace utils {
 		const size_t pos_of_dot = s.find_last_of('.');
 		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
 		const auto ext = s.substr(pos, s.size() - pos);
-		return ext == ".tmp";
+
+		static const std::vector<std::string> TEMPORARY_FILE_EXTENSIONS{".tmp", ".TMP"}; 
+
+		for(const auto& tmp: TEMPORARY_FILE_EXTENSIONS){
+			if(ext == tmp) return true;
+		}
+		return false;
 	}
 
 
