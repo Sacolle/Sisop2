@@ -140,7 +140,8 @@ namespace net{
 		auto user_sessions = users_sessions.lock();
 		//adiciona a todos os ids que existem, pois um pacote tem q ser devolvido
 		for(auto& v: user_sessions->at(username).data_packets_map){
-			v.second.push(payload);
+			std::shared_ptr<net::Payload> cloned_payload(payload->clone());
+			v.second.push(cloned_payload);
 		}
 	}
 }

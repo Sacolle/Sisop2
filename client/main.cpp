@@ -86,7 +86,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 				.append(utils::pckt_type_to_name(msg->op_type()))
 		);
 		break;
-	case Net::Operation_Response:
+	case Net::Operation_Response: //TODO: se for response gerar outra exceção
 		throw net::ReceptionException(
 			std::string("Unexpected packet Payload::parse_from_buffer ")
 				.append(utils::pckt_type_to_name(msg->op_type()))

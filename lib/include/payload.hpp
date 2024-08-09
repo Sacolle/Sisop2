@@ -47,6 +47,8 @@ namespace net{
 			virtual void reply(Serializer& serde, std::shared_ptr<Socket> socket) = 0;
 			//comportamento default de await_response é esperar um ok, se n da err 
 			virtual void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			virtual Payload* clone() = 0;
 		private:
 			const Net::Operation operation_type;
 	};
@@ -79,6 +81,9 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for ok or err pkct
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Upload(filename.c_str(), size); }
+
 			bool is_server = false; 	
 		private:
 			std::string filename;
@@ -98,6 +103,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for ok or err pkct
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new SendFileRequest(filename.c_str(), hash); }
 		private:
 			const std::string filename;
 			SyncFile file;
@@ -115,6 +122,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the file and saves it
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Download(filename.c_str()); }
 		private:
 			const std::string filename;
 			SyncFile file;
@@ -144,6 +153,8 @@ namespace net{
 			//awaits for all the files
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
+			inline Payload* clone(){ return new Connect(username.c_str(), channel_type, id); }
+
 			const uint64_t id; //value unique to a client
 			const std::string username;
 			const Net::ChannelType channel_type;
@@ -163,6 +174,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for an ok
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Ping(); }
 	};
 
 	//lida com IO
@@ -177,6 +190,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the response
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new ListFiles(); }
 	};
 
 	class Exit : public Payload {
@@ -190,6 +205,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for an ok
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Exit(); }
 	};
 	//lida com IO
 	class Delete : public Payload {
@@ -202,6 +219,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the response
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Delete(filename.c_str()); }
 		private:
 			const std::string filename;	
 	};

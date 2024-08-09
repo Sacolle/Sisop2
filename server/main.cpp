@@ -103,7 +103,7 @@ void *server_loop_commands(void *arg){
 	std::string username; 
 	try{
 		username = initial_handshake(serde, socket, &id,  true);
-	}catch(std::exception e){
+	}catch(std::exception& e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
 	}
 
@@ -122,7 +122,7 @@ void *server_loop_commands(void *arg){
 		try{
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
-			std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
+			//std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
 			payload->reply(serde, socket);
 			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
 				controller.add_data_packet(username, payload);
@@ -203,7 +203,7 @@ void *server_loop_data(void *arg) {
 		try {
 			auto payload_opt = controller.get_data_packet(username, id);
 			if(payload_opt.has_value()){
-				std::cout << "Data thread has packet: " 
+				std::cout << "Data thread of " << session << " has packet: " 
 				<< utils::pckt_type_to_name(payload_opt.value()->get_type()) << std::endl;
 
 

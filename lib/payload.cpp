@@ -97,7 +97,7 @@ namespace net {
 
 	//se falha, envia um response err
 	Upload::Upload(const char* filename): 
-		filename(filename), Payload(Net::Operation_FileMeta){}
+		filename(filename), size(0), Payload(Net::Operation_FileMeta){}
 	Upload::Upload(const char* filename, uint64_t file_size):
 		filename(filename), size(file_size), Payload(Net::Operation_FileMeta){}
 
@@ -125,12 +125,11 @@ namespace net {
 	}
 	//receives the packets and writes to file
 	void Upload::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-
+		
 		file.open_recv(utils::filename_without_path(filename), utils::get_sync_dir_path(socket->get_username()));
 
 		//already received the filemeta and builded this upload obj, having the corret size
 		//receive the following pckts
-		//TODO: do also a timeout sistem
 		uint64_t read_bytes = 0;
 		while (read_bytes < size){
 			auto buff = socket->read_full_pckt();
@@ -144,7 +143,6 @@ namespace net {
 			file.write(data->data(), data_size);
 			//std::cout << "Lido: " << read_bytes << std::endl; 
 		}
-		//TODO: rename the file and stuff
 		//read the file, send an ok
 		file.finish_and_rename();
 
