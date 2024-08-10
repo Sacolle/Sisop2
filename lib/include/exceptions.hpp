@@ -15,7 +15,13 @@ namespace net {
 			ReceptionException(const std::string& what) : std::runtime_error(what){}
 	};
 	class TransmissionException : public std::exception {};
+	class InvalidConnectionException : public std::runtime_error{
+		public:
+			InvalidConnectionException(const std::string& what) : std::runtime_error(what){}
+	};
 	class CloseConnectionException : public std::exception {};
+	//throw when trying to acess a session that no longer exists
+	class CloseSessionException : public std::exception {};
 }
 
 #endif 

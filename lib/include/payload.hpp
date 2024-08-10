@@ -19,6 +19,7 @@ namespace net{
 			//opens a file, 
 			ssize_t open_read(const std::string& _filename, const std::string& dir_name);
 			ssize_t open_read(const std::string& _filename);
+			bool open_read_if_exists(const std::string& _filename, const std::string& dir_name);
 
 			ssize_t read(const std::vector<uint8_t>& buff);
 			void write(const uint8_t* buff, const size_t size);
@@ -46,6 +47,8 @@ namespace net{
 			virtual void reply(Serializer& serde, std::shared_ptr<Socket> socket) = 0;
 			//comportamento default de await_response é esperar um ok, se n da err 
 			virtual void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			virtual Payload* clone() = 0;
 		private:
 			const Net::Operation operation_type;
 	};
@@ -78,10 +81,34 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for ok or err pkct
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Upload(filename.c_str(), size); }
+
+			bool is_server = false; 	
+		private:
+			std::string filename;
+			SyncFile file;
+			uint64_t size;
+	};
+
+	class SendFileRequest : public Payload {
+		public:
+			//opens the file for the request
+			SendFileRequest(const char* filename);
+			SendFileRequest(const char* filename, uint64_t hash);
+
+			//read the file and sends the packets 
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//receives the packets and writes to file
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+			//awaits for ok or err pkct
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new SendFileRequest(filename.c_str(), hash); }
 		private:
 			const std::string filename;
 			SyncFile file;
-			uint64_t size;
+			uint64_t hash;
 	};
 	//lida com IO
 	class Download : public Payload {
@@ -95,6 +122,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the file and saves it
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Download(filename.c_str()); }
 		private:
 			const std::string filename;
 			SyncFile file;
@@ -124,9 +153,14 @@ namespace net{
 			//awaits for all the files
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
+			inline Payload* clone(){ return new Connect(username.c_str(), channel_type, id); }
+
 			const uint64_t id; //value unique to a client
 			const std::string username;
 			const Net::ChannelType channel_type;
+			bool valid_connection = true;
+			bool command_connection = false; 
+			std::string port;
 	};
 
 	class Ping : public Payload {
@@ -140,6 +174,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for an ok
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Ping(); }
 	};
 
 	//lida com IO
@@ -153,7 +189,9 @@ namespace net{
 			//reads the username folder and returns a response with the name of the files there
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the response
-			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new ListFiles(); }
 	};
 
 	class Exit : public Payload {
@@ -167,6 +205,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for an ok
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Exit(); }
 	};
 	//lida com IO
 	class Delete : public Payload {
@@ -179,6 +219,8 @@ namespace net{
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 			//awaits for the response
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
+
+			inline Payload* clone(){ return new Delete(filename.c_str()); }
 		private:
 			const std::string filename;	
 	};

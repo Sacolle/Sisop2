@@ -21,11 +21,12 @@ namespace net{
 			FlatBufferBuilder* build_ping();
 			FlatBufferBuilder* build_exit();
 			FlatBufferBuilder* build_filemeta(std::string const& filename, uint64_t size);
+			FlatBufferBuilder* build_sendfilerequest(std::string const& filename, uint64_t hash);
 			FlatBufferBuilder* build_filedata(uint8_t* buff, int size);
 			FlatBufferBuilder* build_connect(std::string const& username, Net::ChannelType type, uint64_t id);
 			FlatBufferBuilder* build_download(std::string const& filename);
 			FlatBufferBuilder* build_delete(std::string const& filename);
-			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg);
+			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg, std::string *port = nullptr);
 
 		private:
 			FlatBufferBuilder builder;

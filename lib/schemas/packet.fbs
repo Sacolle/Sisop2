@@ -1,6 +1,7 @@
 namespace Net;
 
-union Operation { 
+union Operation {
+	SendFileRequest,
 	FileMeta,
 	FileData,
 	// operations
@@ -32,6 +33,11 @@ table Connect {
 	// - sync -> for server relay file update to clinet reply 
 }
 
+table SendFileRequest {
+	name: string;
+	hash: ulong;
+}
+
 table FileMeta {
 	name: string;
 	size: ulong;		//total size of the file
@@ -57,11 +63,12 @@ table Delete {
 	filename: string;
 }
 
-enum Status: ubyte { Ok, Error, FileNotFound, BadFile, OutOfSeq }
+enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq }
 
 table Response {
 	status: Status;
 	msg: string;
+	port: string; 
 }
  
 root_type Packet;

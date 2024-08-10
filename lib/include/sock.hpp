@@ -14,8 +14,8 @@
 #include "packet_generated.h"
 
 #include "exceptions.hpp"
+#include "defines.hpp"
 
-#define READ_BUFFER_SIZE 1024
 #define SOCKET_READ_ATTEMPTS 3
 #define PAYLOAD_HEADER_SIZE sizeof(u_int32_t)
 
@@ -25,9 +25,9 @@ namespace net{
 		public:
 			//deleta os construtores de copy pra n dar ruim
 			Socket& operator= (const Socket&) = delete;
-			Socket(int sock_fd) noexcept : fd(sock_fd){ bzero(read_buff, READ_BUFFER_SIZE); }
+			Socket(int sock_fd) noexcept : fd(sock_fd){ bzero(read_buff, SK_BUFFSIZE); }
 			Socket(int sock_fd, const char* ip, uint16_t port) noexcept : fd(sock_fd), their_ip(ip), their_port(port) {
-				bzero(read_buff, READ_BUFFER_SIZE);
+				bzero(read_buff, SK_BUFFSIZE);
 			}
 			~Socket() noexcept { close(fd); }
 			void print_address();
@@ -49,7 +49,7 @@ namespace net{
 			const int fd = 0;
 			std::string their_ip;
 			uint16_t their_port;
-			uint8_t read_buff[READ_BUFFER_SIZE];
+			uint8_t read_buff[SK_BUFFSIZE];
 
 			//NOTE: poderia ser em uma estrutura separada, porém faz mais sentido o id, nome e tipo estar aqui
 			std::string username;
@@ -62,7 +62,7 @@ namespace net{
 			ServerSocket() noexcept {}
 
 			void open(const char* port, const int backlog);
-			std::shared_ptr<Socket> accept();
+			Socket *accept();
 		private:
 			int fd;
 	};

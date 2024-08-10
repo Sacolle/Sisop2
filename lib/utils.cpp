@@ -1,5 +1,9 @@
 #include "utils.hpp"
+#include <iostream> 
 
+#include <string>
+#include <filesystem>
+#include <pthread.h>
 
 #define TOSTR(x) # x
 #define ENUM_TO_STR_CASE(val) case val: return TOSTR(val) 
@@ -8,6 +12,7 @@ namespace utils {
 		switch (op){
 			ENUM_TO_STR_CASE(Net::Operation_Connect);
 			ENUM_TO_STR_CASE(Net::Operation_FileMeta);
+			ENUM_TO_STR_CASE(Net::Operation_SendFileRequest);
 			ENUM_TO_STR_CASE(Net::Operation_FileData);
 			ENUM_TO_STR_CASE(Net::Operation_ListFiles);
 			ENUM_TO_STR_CASE(Net::Operation_Exit);
@@ -40,4 +45,29 @@ namespace utils {
 		std::generate_n(begin(result), len, [&]() { return chars[dist(rng)]; });
 		return result;
 	}
+
+	std::string get_sync_dir_path(const std::string& username){
+		std::string s("sync_dir_");
+		s.append(username);
+		return s;
+	}
+
+	int random_number() {
+		srand(time(NULL));
+		return rand();
+	}
+
+	void test_and_set_folder(const std::string& username){
+		std::string foldername = get_sync_dir_path(username); 
+        //NOTE: creio q o inicializador estatico deve dar certo,
+        // e n dar problema com o inicilizador do mutex
+        static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+        pthread_mutex_lock(&mutex);
+        // Create directory if it doesn't exist
+        if (!std::filesystem::exists(foldername)) {
+            std::filesystem::create_directory(foldername);
+        }
+        pthread_mutex_unlock(&mutex);
+    }
 }

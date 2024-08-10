@@ -1,0 +1,6 @@
+Arrumar:
+    std::exception client
+    thread de data não deslogando
+    arquivo temporário vim/editor de texto
+    fluxo packet, mover para controller
+    usar controller e metodo diretorio na main server

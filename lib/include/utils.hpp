@@ -39,10 +39,32 @@ namespace utils {
 		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
 		return s.substr(pos, s.size() - pos);
 	}
+	inline bool is_tmp_file(const std::string &s){
+		const size_t pos = s.find_last_of('.');
+		//não tem extensão, não retorna
+		if(pos == std::string::npos){
+			return true;
+		}
+
+		const auto ext = s.substr(pos, s.size() - pos);
+
+		static const std::vector<std::string> TEMPORARY_FILE_EXTENSIONS{".tmp", ".TMP", ".swp", ".swx"}; 
+
+		for(const auto& tmp: TEMPORARY_FILE_EXTENSIONS){
+			if(ext == tmp) return true;
+		}
+		return false;
+	}
 
 
 	std::string generate_random_alphanumeric_string(std::size_t len);
 	const char* pckt_type_to_name(Net::Operation op);
+
+	std::string get_sync_dir_path(const std::string& username);
+
+	int random_number();
+
+	void test_and_set_folder(const std::string& foldername); 
 }
 
 #endif

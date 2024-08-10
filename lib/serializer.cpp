@@ -2,12 +2,12 @@
 #include "serializer.hpp"
 #include "exceptions.hpp"
 #include "utils.hpp"
+#include "defines.hpp"
 
 #include <iostream>
-#define FB_BUFFER_SIZE 1024
 
 namespace net{
-	Serializer::Serializer(): builder(FB_BUFFER_SIZE){}
+	Serializer::Serializer(): builder(FB_BUFFSIZE){}
 
 	const Net::Packet* Serializer::parse(uint8_t* pckt){
 		return Net::GetSizePrefixedPacket(pckt);
@@ -17,7 +17,8 @@ namespace net{
 		const Net::Packet* p = parse(pckt);
 		if(p->op_type() != excepted_op){
 			std::cout << "pacote recebido é: " << utils::pckt_type_to_name(p->op_type()) << std::endl;
-			throw ReceptionException("Pacote recebido não é FileMeta");
+			std::string expected_op_str(utils::pckt_type_to_name(excepted_op)); 
+			throw ReceptionException("Pacote recebido não é " + expected_op_str);
 		}
 		return p;
 	}
@@ -41,6 +42,7 @@ namespace net{
 		return &builder;
 	}
 	FlatBufferBuilder* Serializer::build_exit(){
+		//TODO:
 		return &builder;
 	}
 	FlatBufferBuilder* Serializer::build_filemeta(std::string const& filename, uint64_t size){
@@ -48,6 +50,15 @@ namespace net{
 
 		auto filemeta = Net::CreateFileMeta(builder, builder.CreateString(filename), size);
 		auto packet = Net::CreatePacket(builder, Net::Operation_FileMeta, filemeta.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+	}
+	FlatBufferBuilder* Serializer::build_sendfilerequest(std::string const& filename, uint64_t hash){
+		builder.Clear();
+
+		auto filemeta = Net::CreateSendFileRequest(builder, builder.CreateString(filename), hash);
+		auto packet = Net::CreatePacket(builder, Net::Operation_SendFileRequest, filemeta.Union());
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;
@@ -88,10 +99,11 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg){
+	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg, std::string *port){
 		builder.Clear();
-
-		auto response = Net::CreateResponse(builder, status, builder.CreateString(msg));
+		flatbuffers::Offset<Net::Response> response;
+		if (port == nullptr) response = Net::CreateResponse(builder, status, builder.CreateString(msg));
+		else response = Net::CreateResponse(builder, status, builder.CreateString(msg), builder.CreateString(*port));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Response, response.Union());
 		builder.FinishSizePrefixed(packet);
 
