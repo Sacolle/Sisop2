@@ -46,6 +46,7 @@ Server:
  - [ ] Modificar o schema dos pacotes para poder reconecer de qual usuário ele é transmitido
  - [ ] Adicionar na estrutura controller o relay dos pacotes para os outros servidores
  - [ ] Adicionar as threads necessárias para enviar e receber os pacotes das diferentes replicações
+ - [ ] Adicionar um método para setar as sockets ser não bloqueante
  - [ ] Implementar o algoritmo do bully, usando essas conexões e essas threads já alocadas para o relay dos pacotes
  - [ ] Fazer um relay de um pacote novo -> pacote que faz o relay de quais usuários estão conectados e os seus IPs
  - [ ] Fazer a socket UDP para notificar todos os usuários conectados qual o novo servidor
