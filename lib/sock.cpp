@@ -173,4 +173,79 @@ namespace net{
 	std::shared_ptr<Socket> ClientSocket::build(){
 		return std::make_shared<Socket>(fd);
 	}
+
+	UDPSocketAdress::UDPSocketAdress(const std::string& ip, const int port){
+		adress_info.sin_family = AF_INET;
+		adress_info.sin_port = htons(port);
+		adress_info.sin_addr.s_addr = inet_addr(ip.c_str());
+	}
+
+	void UDPSocket::open(const std::string& ip, const int port){
+		if((fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1){
+			throw NetworkException("Failed to create UDP socket file descriptor");
+		}
+
+		adress_info.sin_family = AF_INET;
+		adress_info.sin_port = htons(port);
+		adress_info.sin_addr.s_addr = inet_addr(ip.c_str());
+		
+		if(bind(fd, (struct sockaddr*)&adress_info, sizeof(adress_info)) < 0){
+			throw NetworkException("Couldn't bind to the UDP port\n");
+		}
+	}
+	//recebe um datagrama UDP, retornando o endereço de quem enviou
+	//considera que todos os pacotes chegam completos, se não for o caso, gera uma exceção
+	UDPSocketAdress UDPSocket::recv(std::vector<uint8_t>& buff, int* size){
+		//clear the buff
+		buff.clear();
+
+		//create the struct for the adress of the receving packet
+		UDPSocketAdress recv_adress;
+		uint32_t adress_struct_size = sizeof( recv_adress.adress_info );
+
+		const int read_bytes = ::recvfrom(fd, 
+			buff.data(), buff.capacity(), //buffer space that bytes can be read to
+			0, //flags
+			(struct sockaddr*)&recv_adress.adress_info, //saves the receving adress in the struct
+			&adress_struct_size
+		);
+
+		if(read_bytes < 0){
+			throw ReceptionException("read_bytes < 0");
+		}
+
+		const auto expected_msg_size = flatbuffers::GetSizePrefixedBufferLength(buff.data());
+		
+		if(read_bytes != expected_msg_size){
+			throw ReceptionException("read_bytes != expected_msg_size"); //incomplete message
+		}
+		return recv_adress;
+	}
+
+	void UDPSocket::send(UDPSocketAdress& adress, std::vector<uint8_t>& buff){
+
+		const int sent_bytes = ::sendto(fd, 
+			buff.data(), buff.size(), 
+			0,
+         	(struct sockaddr*) &adress.adress_info,
+			sizeof(adress.adress_info)
+		);
+
+		if(sent_bytes != buff.size()){
+			throw TransmissionException(); 
+		}
+	}
+	void UDPSocket::send(UDPSocketAdress& adress, flatbuffers::FlatBufferBuilder *buff){
+		const auto buff_size = buff->GetSize();
+		const int sent_bytes = ::sendto(fd, 
+			buff->GetBufferPointer(), buff_size, 
+			0,
+         	(struct sockaddr*) &adress.adress_info,
+			sizeof(adress.adress_info)
+		);
+
+		if(sent_bytes != buff_size){
+			throw TransmissionException(); 
+		}
+	}
 };

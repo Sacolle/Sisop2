@@ -56,6 +56,7 @@ namespace net{
 			uint64_t user_id;
 			Net::ChannelType channel_type;
 	};
+
 	class ServerSocket{
 		public:
 			ServerSocket& operator= (const ServerSocket&) = delete;
@@ -76,6 +77,41 @@ namespace net{
 			std::shared_ptr<Socket> build();
 		private:
 			int fd = -1;
+	};
+
+	class UDPSocketAdress {
+		public:
+			UDPSocketAdress(const std::string& ip, const int port);
+		protected:
+			UDPSocketAdress();
+			struct ::sockaddr_in adress_info;
+		
+		friend class UDPSocket;
+	};
+
+	class UDPSocket {
+		public:
+			UDPSocket& operator= (const UDPSocket&) = delete;
+			UDPSocket(){}
+			~UDPSocket() noexcept {
+				close(fd);
+			}
+
+			//bind to own port and ip
+			void open(const std::string& ip, const int port);
+			//receive from -> returns the socket adress of the message
+			//buff: buffer para colocar a mensagem
+			//size: tamanho da mensagem colocado no buffer
+			//emite uma exeção caso size seja menor que o tamanho esperado
+			UDPSocketAdress recv(std::vector<uint8_t>& buff, int* size);
+
+			//envia o buff para UDPSocketAdress
+			//se não mandou a mensagem completa emite uma exeção
+			void send(UDPSocketAdress& adress, std::vector<uint8_t>& buff);
+			void send(UDPSocketAdress& adress, flatbuffers::FlatBufferBuilder *buff);
+		private:
+			int fd = 0;
+			struct ::sockaddr_in adress_info;
 	};
 };
 
