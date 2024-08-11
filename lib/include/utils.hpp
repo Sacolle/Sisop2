@@ -40,11 +40,15 @@ namespace utils {
 		return s.substr(pos, s.size() - pos);
 	}
 	inline bool is_tmp_file(const std::string &s){
-		const size_t pos_of_dot = s.find_last_of('.');
-		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
+		const size_t pos = s.find_last_of('.');
+		//não tem extensão, não retorna
+		if(pos == std::string::npos){
+			return true;
+		}
+
 		const auto ext = s.substr(pos, s.size() - pos);
 
-		static const std::vector<std::string> TEMPORARY_FILE_EXTENSIONS{".tmp", ".TMP"}; 
+		static const std::vector<std::string> TEMPORARY_FILE_EXTENSIONS{".tmp", ".TMP", ".swp", ".swx"}; 
 
 		for(const auto& tmp: TEMPORARY_FILE_EXTENSIONS){
 			if(ext == tmp) return true;
