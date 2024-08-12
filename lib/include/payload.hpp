@@ -224,6 +224,22 @@ namespace net{
 		private:
 			const std::string filename;	
 	};
+	class RedefineServer : public Payload {
+		public:
+			RedefineServer(const char* ip, const char* port);
+
+			// sends new ip and port of the new main server ( can be sent only be the coordinator for each client )
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			// TODO: decide what it replies
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new RedefineServer(ip.c_str(), port.c_str()); }
+			const std::string ip;
+			const std::string port; 	
+		private:
+
+	};
 }
 
 #endif

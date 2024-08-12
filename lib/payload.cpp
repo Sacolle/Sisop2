@@ -450,5 +450,18 @@ namespace net {
 		std::cout << "got ping back" << std::endl;
 	}
 
+	RedefineServer::RedefineServer(const char* ip, const char* port): ip(ip), port(port), Payload(Net::Operation_RedefineServer){}
+
+	//sends the name of the file to be deleted
+	void RedefineServer::send(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_redefine_server(ip, port);
+		socket->send_checked(pckt);
+	}
+
+	//does nothing
+	void RedefineServer::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+	}
+
+
 }
 

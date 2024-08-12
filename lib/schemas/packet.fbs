@@ -11,6 +11,7 @@ union Operation {
 	Download,
 	Delete,
 	Response,
+	RedefineServer, 
 	Ping
 }
  
@@ -37,6 +38,12 @@ table SendFileRequest {
 	name: string;
 	hash: ulong;
 }
+
+table RedefineServer {
+	ip: string;
+	port: string;
+}
+
 
 table FileMeta {
 	name: string;

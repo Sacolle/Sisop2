@@ -99,6 +99,16 @@ namespace net{
 
 		return &builder;
 	}
+
+		FlatBufferBuilder* Serializer::build_redefine_server(std::string const& ip, std::string const& port){
+		builder.Clear();
+
+		auto redefine_server = Net::CreateRedefineServer(builder, builder.CreateString(ip), builder.CreateString(ip));
+		auto packet = Net::CreatePacket(builder, Net::Operation_RedefineServer, redefine_server.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+	}
 	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg, std::string *port){
 		builder.Clear();
 		flatbuffers::Offset<Net::Response> response;

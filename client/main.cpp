@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <filesystem>
+#include <utility>
 
 #include "packet_generated.h"
 
@@ -20,10 +21,18 @@
 #include "utils.hpp"
 #include "exceptions.hpp"
 
+#define BACKLOG 10
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
 
 pthread_mutex_t mutex_close_threads = PTHREAD_MUTEX_INITIALIZER;
 bool close_threads = false;
+std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(std::string ip, std::string port, int id, std::string username);
+net::ServerSocket wait_for_coordinator_socket_listen(true);
+int client_loop_commands(	std::shared_ptr<net::Socket> socket,
+							net::Serializer &serde,
+							const std::string& username,
+							int id);
+void *client_loop_data(void *arg);
 
 net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	//TODO: parse
@@ -75,6 +84,14 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		upload->is_server = true;
 		return upload;
 	} break;
+	case Net::Operation_RedefineServer: {
+		auto payload = msg->op_as_RedefineServer();
+		auto redefine_server = std::make_shared<net::RedefineServer>(
+			payload->ip()->c_str(),
+			payload->port()->c_str()
+		);
+		return redefine_server; 
+	} break; 
 	case Net::Operation_ListFiles:
 	case Net::Operation_Ping:
 	case Net::Operation_Exit:
@@ -198,8 +215,64 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 	}
 }
 
-void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer &serde, char *username) {
-	std::string userfolder = utils::get_sync_dir_path(std::string(username)); 
+std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(std::string ip, std::string port, int id, std::string username, net::Serializer& serde){
+	
+	/* Conexão com o socket de comandos */
+	net::ClientSocket base_socket_commands;
+
+	try {
+		base_socket_commands.connect(ip.c_str(), port.c_str());
+	}
+	catch(const std::exception& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+
+	auto socket_commands = base_socket_commands.build();
+
+
+	
+	std::string server_port_data;
+
+	// Command handshake
+	try {
+		server_port_data = initial_handshake(serde, socket_commands, username.c_str(), id);
+	} catch (net::InvalidConnectionException e){
+		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
+		exit(1);
+	}
+
+	/* Conexão com o socket de receber dados da outra session */
+
+	net::ClientSocket base_socket_data;
+
+	try {
+		base_socket_data.connect(ip.c_str(), server_port_data.c_str());
+	}
+	catch(const std::exception& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+
+	auto socket_data = base_socket_data.build();
+
+	/* Data handshake */
+	try {
+		initial_handshake(serde, socket_data, username.c_str(), id);
+	} catch (net::InvalidConnectionException e){
+		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
+		exit(1);
+	}
+
+	return std::make_pair(socket_data, socket_commands);
+
+}
+
+int client_loop_commands(	std::shared_ptr<net::Socket> socket,
+							net::Serializer &serde,
+							const std::string& username,
+							int id) {
+	std::string userfolder = utils::get_sync_dir_path(username); 
 
 	/* Create the file descriptor for accessing the inotify API. */
 	int inotify_fd = inotify_init1(IN_NONBLOCK);
@@ -227,36 +300,41 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 	/* Wait for events and/or terminal input. */
 	while (1) {
 
-		if (close_threads) {
-			pthread_mutex_lock(&mutex_close_threads);
-			exit(EXIT_SUCCESS);
-			pthread_mutex_unlock(&mutex_close_threads);
-		}
-
-		int poll_num = poll(fds, nfds, -1);
-
-		if (poll_num == -1) {
-			if (errno == EINTR)
-				continue;
-			perror("poll");
-			exit(EXIT_FAILURE);
-		}
-		if (poll_num > 0) {
-			if (fds[0].revents & POLLIN) {
-
-				std::string cmd, args;
-				std::cin >> cmd;
-				std::getline(std::cin, args);
-
-				// std::cout << "cmd: " <<  cmd << std::endl << "args: " << args << std::endl; 
-				execute_payload(serde, socket, cmd, args);
+		try {
+			if (close_threads) {
+				pthread_mutex_lock(&mutex_close_threads);
+				exit(EXIT_SUCCESS);
+				pthread_mutex_unlock(&mutex_close_threads);
 			}
-			/* directory synchronization */
-			if (fds[1].revents & POLLIN) {
-				/* Inotify events are available. */
-				// std::cout << "registered event" << std::endl;
-				handle_events(inotify_fd, serde, socket);
+
+			int poll_num = poll(fds, nfds, -1);
+
+			if (poll_num == -1) {
+				if (errno == EINTR)
+					continue;
+				perror("poll");
+				exit(EXIT_FAILURE);
 			}
+			if (poll_num > 0) {
+				if (fds[0].revents & POLLIN) {
+
+					std::string cmd, args;
+					std::cin >> cmd;
+					std::getline(std::cin, args);
+
+					// std::cout << "cmd: " <<  cmd << std::endl << "args: " << args << std::endl; 
+					execute_payload(serde, socket, cmd, args);
+				}
+				/* directory synchronization */
+				if (fds[1].revents & POLLIN) {
+					/* Inotify events are available. */
+					// std::cout << "registered event" << std::endl;
+					handle_events(inotify_fd, serde, socket);
+				}
+			}
+		}
+		catch (const net::CloseConnectionException& e) {
+			return -1;
 		}
 	}
 
@@ -267,7 +345,6 @@ void *client_loop_commands(std::shared_ptr<net::Socket> socket, net::Serializer 
 
 void *client_loop_data(void *arg) {
 	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
-
 	net::Serializer serde;
 	while(1) {
 		try {
@@ -281,10 +358,9 @@ void *client_loop_data(void *arg) {
 			std::cout << "Receiving data: " << utils::pckt_type_to_name(payload->get_type()) << std::endl; 
 			payload->reply(serde, socket);
 		}
-		catch(const net::CloseConnectionException& e){
-			std::cout << "saindo do thread de dados. " << std::endl;
+		catch(const net::CloseConnectionException& e) {
+			/* Conexão acabou -> Fecha thread e a thread de comandos reinicia a operação com novas conexões */
 			pthread_exit(0);
-
 		}catch (std::exception& e) {
 			std::cerr << "uncaught exception: "  << e.what() << std::endl;
 		}
@@ -297,67 +373,63 @@ int main(int argc, char** argv){
 		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port>" << std::endl;
 		exit(2);
 	}
-	int id = utils::random_number();
 
-	std::string userfolder = utils::get_sync_dir_path(std::string(argv[1]));
+	int id = utils::random_number();
+	std::string ip(argv[2]); 
+	std::string port(argv[3]); 
+	std::string username(argv[1]);
+	std::string userfolder = utils::get_sync_dir_path(username);
 
 	// Create an empty directory to receive data from server
 	std::filesystem::remove_all(userfolder);
 	std::filesystem::create_directory(userfolder);
-
-	/* Conexão com o socket de comandos */
-	net::ClientSocket base_socket_commands;
-
-	try {
-		base_socket_commands.connect(argv[2], argv[3]);
-	}
-	catch(const std::exception& e){
-		std::cerr << e.what() << '\n';
-		exit(1);
-	}
-
-	auto socket_commands = base_socket_commands.build();
-
 	net::Serializer serde;
+	/* Faz o loop de operação, caso servidor falhe, reinicia conexão com réplica */
+	while(1) {
+		auto sockets = connect_client(ip, port, id, username, serde);
+		auto socket_data = sockets.first;
+		auto socket_commands = sockets.second;
+		/* Início da thread para leitura de dados */
+		pthread_t t_data;
+		int data_error = pthread_create(&t_data, NULL, client_loop_data, socket_data.get());
+		/* Loop de espera de comandos */
+		int commands_error = client_loop_commands(socket_commands, serde, username, id);
 
-	std::string data_port;
-	
-	// Command handshake
-	try {
-		data_port = initial_handshake(serde, socket_commands, argv[1], id);
-	} catch (net::InvalidConnectionException e){
-		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
-		exit(1);
+		/* Caso ambas as threads retornem que houve uma exceção de fim de conexão */
+		if (data_error == -1 && commands_error == -1) {
+			/* Conexão acabou -> Criar socket para aguardar conexão do novo coordenador -> Aguardar mensagem do novo coordenador -> Criar novas conexões */
+
+			/* Criação de socket para receber a mensagem do novo coordenador */
+			net::ServerSocket wait_for_coordinator_socket_listen(true); // talvez precise ser false = permitir <exit>
+			// Abre a socket que aguardará mensagem do novo coordenador
+			try{
+				wait_for_coordinator_socket_listen.open(PORT_CHANGE_COORDINATOR, BACKLOG);
+			}
+			catch(const net::NetworkException& e){
+				std::cerr << e.what() << '\n';
+				exit(1);
+			}
+			/* Espera a conexão com o novo coordenador */
+			try {
+				std::shared_ptr<net::Socket> wait_for_coordinator_socket((net::Socket *) wait_for_coordinator_socket_listen.accept());
+				/* Recebe a mensagem com o novo ip a se conectar e atualiza a informação de qual é o ip do server */
+				std::string new_ip, new_port;
+				auto buff = wait_for_coordinator_socket->read_full_pckt();
+				auto payload = parse_payload(buff);			
+				if (payload->get_type() != Net::Operation_RedefineServer){
+					std::string s = utils::pckt_type_to_name(payload->get_type()); 
+					throw std::runtime_error("Unexpected packet " + s); 
+				}
+				payload->reply(serde, wait_for_coordinator_socket); 
+				ip = static_cast<net::RedefineServer*>(payload.get())->ip;
+				port =  static_cast<net::RedefineServer*>(payload.get())->port;
+				
+			}
+			catch (const net::NetworkException& e){
+				std::cerr << e.what() << '\n';
+			}
+		}
 	}
-
-	/* Conexão com o socket de receber dados da outra session */
-
-	net::ClientSocket base_socket_data;
-
-	try {
-		base_socket_data.connect(argv[2], data_port.c_str());
-	}
-	catch(const std::exception& e){
-		std::cerr << e.what() << '\n';
-		exit(1);
-	}
-
-	auto socket_data = base_socket_data.build();
-
-	/* Data handshake */
-	try {
-		initial_handshake(serde, socket_data, argv[1], id);
-	} catch (net::InvalidConnectionException e){
-		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
-		exit(1);
-	}
-
-	/* Início da thread para leitura de dados */
-	pthread_t t_data;
-	pthread_create(&t_data, NULL, client_loop_data, socket_data.get());
-
-	/* Loop de espera de comandos */
-	client_loop_commands(socket_commands, serde, argv[1]);
 
 	exit(EXIT_SUCCESS);
     return 0;
