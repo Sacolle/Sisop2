@@ -11,6 +11,12 @@
 #include <memory>
 #include <fstream>
 
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <fcntl.h>
+
 #include "packet_generated.h"
 
 #include "exceptions.hpp"
@@ -42,6 +48,12 @@ namespace net{
 			void send_checked(const void *buf, const int len);
 			void send_checked(flatbuffers::FlatBufferBuilder *buff);
 			uint8_t* read_full_pckt();
+
+			inline int get_fd(){ return fd; }
+
+			//NOTE: jeito mais facil de fazer isso
+			int election_weight = 0;
+
 		private:
 			inline int recv(void *buf, const int len) noexcept { return ::recv(fd, buf, len, 0); }
 			inline int send(const void *msg, const int len) noexcept { return ::send(fd, msg, len, 0); }
@@ -55,16 +67,18 @@ namespace net{
 			std::string username;
 			uint64_t user_id;
 			Net::ChannelType channel_type;
+
 	};
 
 	class ServerSocket{
 		public:
 			ServerSocket& operator= (const ServerSocket&) = delete;
-			ServerSocket() noexcept {}
+			ServerSocket(bool nonblocking = false): nonblocking(nonblocking){}
 
 			void open(const char* port, const int backlog);
 			Socket *accept();
 		private:
+			bool nonblocking;
 			int fd;
 	};
 
@@ -83,7 +97,9 @@ namespace net{
 		public:
 			UDPSocketAdress(const std::string& ip, const int port);
 		protected:
-			UDPSocketAdress();
+			UDPSocketAdress(){
+				bzero(&adress_info, sizeof(adress_info));
+			}
 			struct ::sockaddr_in adress_info;
 		
 		friend class UDPSocket;

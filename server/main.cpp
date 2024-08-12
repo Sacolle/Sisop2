@@ -3,10 +3,12 @@
 #include "serializer.hpp"
 #include "utils.hpp"
 #include "controller.hpp"
+#include "election_manager.hpp"
 
 #include "packet_generated.h"
 
 #include <iostream>
+#include <string>
 #include <utility>
 #include <map>
 #include <string>
@@ -257,9 +259,28 @@ void *server_loop_data(void *arg) {
 }
 
 
-int main() {
-	net::ServerSocket socket_command_listen_server;
-	net::ServerSocket socket_data_listen_server;
+void* election_socket_setup(void* s){
+
+
+}
+
+int main(int argc, char** argv) {
+	//meu valor numero de replicações
+	//ip - porta - valor
+	if(argc < 3){
+		std::cout << "numero insuficiente de argumentos" << std::endl;
+		exit(1);
+	}
+	int election_value = std::stoi(argv[1]);
+	int number_of_replications = std::stoi(argv[2]);
+
+	//primeira vez q chama get instance, precisa passar o valor de eleição
+	{ net::ElectionManager::getInstance(election_value); }
+	
+
+	net::ServerSocket socket_command_listen_server(true);
+	net::ServerSocket socket_data_listen_server(true);
+	
 	// Conecta a socket de comandos
 	try{
 		socket_command_listen_server.open(PORT_COMMAND, BACKLOG);
@@ -276,6 +297,17 @@ int main() {
 		std::cerr << e.what() << '\n';
 		exit(1);
 	}
+
+	net::ServerSocket socket_election_recv;
+	try{
+		socket_election_recv.open(PORT_ELECTION, BACKLOG);
+	}catch(const net::NetworkException& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
+
+	//fazer as threads
+
 	while(1){
 		try {
 			auto s_commands = socket_command_listen_server.accept();

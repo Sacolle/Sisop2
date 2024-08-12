@@ -105,8 +105,10 @@ namespace net{
 		//save data
 
 		freeaddrinfo(servinfo); // all done with this structure
+		if(nonblocking){
+			::fcntl(fd, F_SETFL, O_NONBLOCK);
+		}
 		//at this point fd = the socket file descriptor
-		::fcntl(fd, F_SETFL, O_NONBLOCK);
 		if(::listen(fd, backlog) == -1){
 			std::string error_message("Failed to listen to port: \n\t");
 			error_message += strerror(errno);

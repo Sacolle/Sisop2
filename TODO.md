@@ -66,16 +66,19 @@ vector<Socket> recv_servers;
 //...
 
 //inicializa as conexões
+//espera todos os servidores se conectares a ele
 
+cin >> a;
 for(auto& s: other_servers){
 	s.connect( /* information */);
 	send_servers.push_back(s.build());
 }
 
-//espera todos os servidores se conectares a ele
 while(send_servers.size() < 3){
 	recv_servers.push_back(socket.accept());
 }
+
+
 ```
 Cada servidor pode gerir em uma única thread todas as conexões, 
 mas para isso o recv tem que ser não bloqueante. 

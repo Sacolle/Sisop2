@@ -5,6 +5,8 @@
 
 #define PORT_COMMAND "20001"
 #define PORT_DATA "20002"
+#define PORT_ELECTION "20003"
+
 #define INPUT_BUFFSIZE 4096
 
 #define HASHSEED 0
