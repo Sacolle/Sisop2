@@ -72,10 +72,10 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_connect(std::string const& username, Net::ChannelType type, uint64_t id){
+	FlatBufferBuilder* Serializer::build_connect(std::string const& username, uint64_t id){
 		builder.Clear();
 
-		auto connect = Net::CreateConnect(builder, id, type, builder.CreateString(username));
+		auto connect = Net::CreateConnect(builder, id, builder.CreateString(username));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Connect, connect.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -100,10 +100,9 @@ namespace net{
 		return &builder;
 	}
 
-		FlatBufferBuilder* Serializer::build_ip_information(std::string const& ip, std::string const& port){
+		FlatBufferBuilder* Serializer::build_ip_information(std::string const& port, std::string const& ip, bool isConnected){
 		builder.Clear();
-
-		auto ip_information = Net::CreateIpInformation(builder, builder.CreateString(ip), builder.CreateString(ip));
+		auto ip_information = Net::CreateIpInformation(builder, builder.CreateString(port), builder.CreateString(ip), isConnected);
 		auto packet = Net::CreatePacket(builder, Net::Operation_IpInformation, ip_information.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -139,7 +138,6 @@ namespace net{
 		return &builder;
 
 	}
-	FlatBufferBuilder* build_relay_conection(std::string const& ip, std::string const& port);
 }
 
 /*

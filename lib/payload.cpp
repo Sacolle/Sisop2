@@ -23,7 +23,7 @@ namespace net {
 
 		file.open(tmp_filename, options);
 		if(!file.is_open()){
-			throw std::ios_base::failure("Falha em abrir o arquivo");
+			throw std::ios_base::failure("Falha em abrir o arquivo: " + tmp_filename);
 		}
 		file.seekg(0);
 		// std::cout << "arquivo aberto corretamente" << std::endl;
@@ -56,7 +56,7 @@ namespace net {
 
 		file.open(filename, options);
 		if(!file.is_open()){
-			throw std::ios_base::failure("Falha em abrir o arquivo");
+			throw std::ios_base::failure("Falha em abrir o arquivo " + filename);
 		}
 		const auto file_size = file.tellg();
 		file.seekg(0);
@@ -285,23 +285,23 @@ namespace net {
 	}
 	//awaits for ok or err pkct
 	//gatters the info
-	Connect::Connect(const char* username, const Net::ChannelType channel_type, uint64_t id): 
+	Connect::Connect(const char* username, uint64_t id, const char* data_port): 
 		username(username), 
-		channel_type(channel_type),
+		data_port(data_port),
 		id(id), 
 		Payload(Net::Operation_Connect){}
 
 	//builds the pckt and sends
 	void Connect::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_connect(username, channel_type, id);
+		auto pckt = serde.build_connect(username, id);
 		socket->send_checked(pckt);
 
-		socket->set_connection_info(username, id, channel_type);
+		socket->set_connection_info(username, id);
 	}
 
 	//sends all the files associated with the username and then an response at the end
 	void Connect::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-		socket->set_connection_info(username, id, channel_type);
+		socket->set_connection_info(username, id);
 		//TODO: send all files associated with the username
 		std::string msg;
 		if (this->valid_connection){
@@ -312,9 +312,8 @@ namespace net {
 		} else {
 			msg += "Connection failed!";
 		}
-		std::string port(PORT_DATA); 
 		FlatBufferBuilder*  pckt;
-		if (this->command_connection) pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg, &port);
+		if (this->command_connection) pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg, &data_port);
 		else pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg);
 		socket->send_checked(pckt);
 	}
@@ -334,7 +333,7 @@ namespace net {
 				<< "Resposta do servidor: " << response->msg()->c_str() << std::endl;  
 		}
 		if (response->port()) {
-			port = std::string(strdup(response->port()->c_str()));
+			data_port = std::string(strdup(response->port()->c_str()));
 		}
 	}
 
@@ -450,10 +449,10 @@ namespace net {
 		std::cout << "got ping back" << std::endl;
 	}
 
-	RedefineServer::RedefineServer(const char* ip, const char* port): ip(ip), port(port), Payload(Net::Operation_IpInformation){}
+	RedefineServer::RedefineServer(const char* port): port(port), Payload(Net::Operation_IpInformation){}
 
 	void RedefineServer::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_ip_information(ip, port);
+		auto pckt = serde.build_ip_information(port);
 		socket->send_checked(pckt);
 	}
 
@@ -461,6 +460,23 @@ namespace net {
 	void RedefineServer::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
 		socket->send_checked(pckt);
+	}
+
+	ClientInfo::ClientInfo(std::string ip, std::string port, bool isConnected): ip(ip), isConnected(isConnected), port(port), Payload(Net::Operation_IpInformation){}
+
+	void ClientInfo::send(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_ip_information(port, ip, isConnected);
+		socket->send_checked(pckt);
+	}
+
+	//só manda um ok
+	void ClientInfo::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
+		socket->send_checked(pckt);
+	}
+
+	bool ClientInfo::operator==(const ClientInfo& rhs){
+		return rhs.ip == this->ip && rhs.port == this->port; 
 	}
 
 	Election::Election(const int my_peso, const int other_peso):

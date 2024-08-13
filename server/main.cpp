@@ -23,18 +23,48 @@
 
 pthread_mutex_t g_replicator_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+
+void send_packet_to_replicas(net::Serializer& serde, std::shared_ptr<net::Payload>& payload){
+	auto& election_manager = net::ElectionManager::getInstance(); 
+	pthread_mutex_lock(&g_replicator_mutex);
+	for(auto s_opt: election_manager.get_send_sockets()){
+		try {
+			if(!s_opt.has_value()) continue;
+			auto s = s_opt.value();
+			std::shared_ptr<net::Payload> replicated_payload(payload->clone());
+			if (replicated_payload->get_type() == Net::Operation_FileMeta){
+				auto upload = std::dynamic_pointer_cast<net::Upload>(replicated_payload);
+				upload->is_server = true; 
+			}
+			std::cout << "Sending to replica: " << utils::pckt_type_to_name(replicated_payload->get_type()) << std::endl;
+			replicated_payload->send(serde, s);
+			replicated_payload->await_response(serde, s);
+		} catch(const net::ReceptionException& e){
+			std::cerr << "Error reading replica response: " << e.what() << std::endl;
+		} catch(const net::CloseConnectionException& e){
+			std::cerr << "Lost connection with replica: " << e.what() << std::endl; 
+			election_manager.remove_send_socket(s_opt.value()); 
+		} catch(const std::exception& e){
+			std::cerr << "Unexpected exception while sending packet to replica: " << e.what() << std::endl; 
+		}
+	}
+	pthread_mutex_unlock(&g_replicator_mutex);
+}
+
 // Connect user's session if the user does not have more than 1 session and the id of the session is unique
 std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, int* id, bool is_command){
+	auto& election_manager = net::ElectionManager::getInstance();
 	auto buff = socket->read_full_pckt();
 	auto pckt = serde.parse_expect(buff, Net::Operation_Connect);
 	auto connect_raw = pckt->op_as_Connect();
 	net::Connect connect(
 		connect_raw->username()->c_str(), 
-		connect_raw->type(), 
-		connect_raw->id()
+		connect_raw->id(),
+		election_manager.data_port.c_str()
 	);
 	*id = connect_raw->id(); 
-	connect.command_connection = is_command; 
+	connect.command_connection = is_command;
+	
 
 	auto& controller = net::Controller::getInstance();  
 	if (!controller.add_session(connect.username, connect.id)){
@@ -43,6 +73,10 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 		std::cout << "Login for user " << connect.username << " and id "  << connect.id << " failed" << std::endl; 
 	}
 	connect.reply(serde, socket);
+
+	std::shared_ptr<net::Payload>  payload_client_info = std::make_shared<net::ClientInfo>(socket->get_their_ip(), PORT_CHANGE_COORDINATOR, true);
+	send_packet_to_replicas(serde, payload_client_info); 
+
 	return connect.username;
 }
 
@@ -132,47 +166,30 @@ void *server_loop_commands(void *arg){
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
 			//std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
-
-			pthread_mutex_lock(&g_replicator_mutex);
-			for(auto s_opt: election_manager.get_send_sockets()){
-				if(!s_opt.has_value()) continue;
-				auto s = s_opt.value();
-				std::shared_ptr<net::Payload> replicated_payload(payload->clone());
-				replicated_payload->send(serde, s);
-				replicated_payload->await_response(serde, s);
-			}
-			pthread_mutex_unlock(&g_replicator_mutex);
 			
 			payload->reply(serde, socket);
 			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
 				controller.add_data_packet(username, payload);
+				send_packet_to_replicas(serde, payload); 
 			}
 		}catch(const net::CloseConnectionException& e){
-	
 			std::cout << controller.remove_session(username, id) << std::endl;
 			std::cout << "Saindo da sessão de comandos de " << session << std::endl;
-			pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 			pthread_exit(0);
-
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
-			pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 			//TODO: await a bit, flush the socket and send a ping to see if its ok
 		}catch(const std::ios_base::failure& e){
 			try {
 				auto err_response = serde.build_response(Net::Status_Error, e.what());
 				socket->send_checked(err_response);
 			}catch(const net::CloseConnectionException& e){
-				
 				controller.remove_session(username, id);
 				std::cout << "Saindo da sessão de comandos de " << session << std::endl;
-				pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 				pthread_exit(0);
-
 			}catch(const std::exception& e){
 				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
 				controller.remove_session(username, id);
-				pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 				pthread_exit(0);
 			}
 		}catch(std::exception& e){
@@ -295,7 +312,7 @@ void* election_socket_setup(void* s){
 		for(int i = 0; i < replicacoes; i++){
 			std::cin >> ip >> porta >> valor;
 // Possivelmente é melhor ter um coordenador inicial para deixar responsável pelo setup e fazer a sincronização inicial
-				
+			std::cout << "Creating socket " << ip << ":" << porta << std::endl;
 			net::ClientSocket socket;
 			socket.connect(ip.c_str(), porta.c_str());
 
@@ -305,7 +322,7 @@ void* election_socket_setup(void* s){
 			//manda essa msg para saber o peso da conexão
 			//importante depois na votação
 			//fazendo desse jeito seco, pq sim
-			auto pckt = serde.build_connect("", Net::ChannelType_MIN, election_manager.valor);
+			auto pckt = serde.build_connect("", election_manager.valor);
 			s->send_checked(pckt);
 			
 			election_manager.add_send_socket(s);
@@ -335,7 +352,7 @@ void setup_election(char* election_port, int number_of_replications){
 	//cria a thread para estabelecer as conexões
 	pthread_t election_connect;
 	pthread_create(&election_connect, NULL, election_socket_setup, &number_of_replications);
-
+	std::cout << "Starting setup " << std::endl; 
 	//aceita number_of_replications conexões
 	for(int i = 0; i < number_of_replications; i++){
 		auto socket_ptr = socket_election_recv.accept();
@@ -414,17 +431,37 @@ void do_the_election(){
 		}
 		//TODO: faz aqui as alterações no election_manager
 		election_manager.set_is_coordinator(true);
-		std::cout << "eu sou o coordenador" << std::endl;
-		//TODO: mandar para os clientes na lista
 		election_manager.set_in_election(false);
+		std::cout << "eu sou o coordenador" << std::endl;
+		std::list<std::shared_ptr<net::ClientInfo>> clients_to_remove; 
+		for(auto& client_info: election_manager.get_clients_info()){
+			net::ClientSocket notify_clients;
+			std::cout << "Sending connect to client " << client_info->ip << ":" << client_info->port << std::endl; 
+			try{
+				notify_clients.connect(client_info->ip.c_str(), client_info->port.c_str());
+			}catch(const net::NetworkException& e){
+				std::cout << "Failed to connect to client: " << client_info->ip << ":" << client_info->port << std::endl;
+				clients_to_remove.push_back(client_info); 
+				continue;
+			}
+			auto s = notify_clients.build();
+			net::RedefineServer redefine_server(election_manager.root_port.c_str()); //my port
+			try {
+				redefine_server.send(serde, s);
+				redefine_server.await_response(serde, s);
+			} catch(...){
+				std::cout << "Falha em comunicar com o ip: " << s->get_their_ip() << std::endl;
+			}
+		}
+		for (auto& client_info : clients_to_remove){
+			election_manager.remove_client_info(client_info); 
+		}		
 	}
-
 	//remove as sockets que removem erro
 	for(auto s: sockets_to_remove){
 		election_manager.remove_send_socket(s);
 	}
 	sockets_to_remove.clear();
-
 	while(election_manager.in_election());
 	election_manager.remove_staged_send_socket();	
 }
@@ -535,6 +572,12 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 	auto msg = Net::GetSizePrefixedPacket(buff);
 
 	switch (msg->op_type()){
+	case Net::Operation_IpInformation: {
+		auto payload = msg->op_as_IpInformation();
+		return std::make_shared<net::ClientInfo>(
+			payload->ip()->c_str(), payload->port()->c_str(), payload->isConnected()
+		);
+	} break; 
 	case Net::Operation_Delete: {
 		auto payload = msg->op_as_Delete();
 		return std::make_shared<net::Delete>(
@@ -560,8 +603,7 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 }
 
 int main(int argc, char** argv) {
-	//meu valor numero de replicações
-	//ip - porta - valor
+	// ./server <election_value> <number_of_replications> <cmd_port> <data_port> <election_port> 
 	if(argc < 6){
 		std::cout << "numero insuficiente de argumentos" << std::endl;
 		exit(1);
@@ -574,7 +616,7 @@ int main(int argc, char** argv) {
 	char* election_port = argv[5];
 
 	//primeira vez q chama get instance, precisa passar o valor de eleição
-	auto& election_manager = net::ElectionManager::getInstance(election_value); 
+	auto& election_manager = net::ElectionManager::getInstance(election_value, cmd_port, data_port); 
 	net::Serializer serde;
 
 	net::ServerSocket socket_command_listen_server(true);
@@ -612,6 +654,14 @@ int main(int argc, char** argv) {
 					auto coord_socket = election_manager.get_coordinator_socket();
 					auto pckt = coord_socket->read_full_pckt();
 					auto payload = parse_server_replication(pckt);
+					if (payload->get_type() == Net::Operation_IpInformation) {
+						std::shared_ptr<net::ClientInfo> clientInfo = std::dynamic_pointer_cast<net::ClientInfo>(payload); 
+						if (clientInfo->isConnected){
+							election_manager.add_client_info(clientInfo); 
+						} else {
+							election_manager.remove_client_info(clientInfo); 
+						}
+					}
 					payload->reply(serde, coord_socket);
 				}catch(const net::CloseConnectionException& e){
 					std::cout << "Coordenador desconectou" << std::endl;

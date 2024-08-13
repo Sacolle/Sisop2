@@ -144,7 +144,7 @@ namespace net{
 	class Connect : public Payload {
 		public:
 			//gatters the info
-			Connect(const char* username, const Net::ChannelType channel_type, uint64_t id);
+			Connect(const char* username, uint64_t id, const char* data_port = "");
 			//username(username), Payload(Net::Operation_Connect){}
 
 			//builds the pckt and sends
@@ -154,14 +154,13 @@ namespace net{
 			//awaits for all the files
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
-			inline Payload* clone(){ return new Connect(username.c_str(), channel_type, id); }
+			inline Payload* clone(){ return new Connect(username.c_str(), id, data_port.c_str()); }
 
 			const uint64_t id; //value unique to a client
 			const std::string username;
-			const Net::ChannelType channel_type;
 			bool valid_connection = true;
 			bool command_connection = false; 
-			std::string port;
+			std::string data_port;
 	};
 
 	class Ping : public Payload {
@@ -228,7 +227,7 @@ namespace net{
 	};
 	class RedefineServer : public Payload {
 		public:
-			RedefineServer(const char* ip, const char* port);
+			RedefineServer(const char* port);
 
 			// sends new ip and port of the new main server ( can be sent only be the coordinator for each client )
 			void send(Serializer& serde, std::shared_ptr<Socket> socket);
@@ -236,11 +235,28 @@ namespace net{
 			// TODO: decide what it replies
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 
-			inline Payload* clone(){ return new RedefineServer(ip.c_str(), port.c_str()); }
-			const std::string ip;
+			inline Payload* clone(){ return new RedefineServer(port.c_str()); }
 			const std::string port; 	
 		private:
 
+	};
+
+	class ClientInfo : public Payload {
+		public:
+			ClientInfo(std::string ip, std::string port, bool isConnected);
+
+			// sends ip and port of client and inform if the client is connected
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			// Send Ok
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new ClientInfo(ip.c_str(), port.c_str(), isConnected); }
+			const std::string ip;
+			const std::string port;
+			const bool isConnected;  	
+			bool operator==(const ClientInfo& rhs); 
+		private:
 	};
 
 	class Election : public Payload {

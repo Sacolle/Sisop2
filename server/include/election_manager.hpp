@@ -2,6 +2,7 @@
 
 #include "sock.hpp"
 #include "mutex.hpp"
+#include "payload.hpp"
 
 #include <list>
 #include <memory>
@@ -13,13 +14,17 @@ namespace net{
 
 			ElectionManager(ElectionManager const&) = delete;
 			void operator=(ElectionManager const&) = delete;
-			static ElectionManager& getInstance(int valor = 0){
-				static ElectionManager instance(valor);
+			static ElectionManager& getInstance(int valor = 0, const char* root_port = nullptr, const char* data_port = nullptr){
+				static ElectionManager instance(valor, root_port, data_port);
 				return instance;
 			}
 
 			void add_recv_socket(std::shared_ptr<Socket> socket);
 			void add_send_socket(std::shared_ptr<Socket> socket);
+
+			void add_client_info(std::shared_ptr<net::ClientInfo> client);
+			void remove_client_info(std::shared_ptr<net::ClientInfo> client);
+			std::list<std::shared_ptr<net::ClientInfo>>& get_clients_info(){ return clients_info; }
 
 			//seta qual socket de send deve ser removida no fim da eleição
 			//isso serve de sincronização entre as threads, para n remover uma socket
@@ -56,16 +61,18 @@ namespace net{
 			std::vector<std::optional<std::shared_ptr<Socket>>>& get_send_sockets(){ return send_sockets; }
 
 			const int valor;
+			const std::string root_port;
+			const std::string data_port;
 
 		private:
-			ElectionManager(int v): valor(v), 
+			ElectionManager(int v, const char* root_port, const char* data_port): valor(v), root_port(root_port), data_port(data_port),
 				_in_election(Mutex(false)), _is_coordinator(Mutex(false)){}
 
 
 			Mutex<bool> _in_election;
 			Mutex<bool> _is_coordinator;
 			std::shared_ptr<Socket> coordinator_socket;
-
+			std::list<std::shared_ptr<net::ClientInfo>> clients_info; 
 			std::vector<std::optional<std::shared_ptr<Socket>>> recv_sockets;
 			std::vector<std::optional<std::shared_ptr<Socket>>> send_sockets;
 

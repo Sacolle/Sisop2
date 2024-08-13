@@ -24,11 +24,8 @@ table Packet {
 }
 table Ping {}
 
-enum ChannelType: ubyte { Main, FileWatch, Relay }
-
 table Connect {
 	id: ulong;
-	type: ChannelType;
 	username: string;
 	//TODO: add type: 
 	// - main -> for client cmd req to server reply
@@ -42,8 +39,9 @@ table SendFileRequest {
 }
 
 table IpInformation {
+	port: string (required);
 	ip: string;
-	port: string;
+	isConnected: bool = true; 
 }
 
 
