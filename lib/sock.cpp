@@ -14,12 +14,9 @@ namespace net{
 		std::cout << "IP: " << their_ip << ":" << their_port << std::endl;
 	}
 
-	void Socket::set_connection_info(const std::string& username, 
-		const uint64_t user_id, const Net::ChannelType channel_type){
-
+	void Socket::set_connection_info(const std::string& username, const uint64_t user_id){
 		Socket::username = username;
 		Socket::user_id = user_id;
-		Socket::channel_type = channel_type;
 	}
 
 	void Socket::send_checked(const void *buf, const int len){

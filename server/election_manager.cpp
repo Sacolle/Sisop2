@@ -43,4 +43,8 @@ namespace net{
 			}
 		}
 	}
+
+	void ElectionManager::add_clients_adress(const std::string& ip, const std::string& port){
+		clients_adress.emplace_back(std::string(ip), std::string(port));
+	}
 }

@@ -143,7 +143,7 @@ namespace net{
 	class Connect : public Payload {
 		public:
 			//gatters the info
-			Connect(const char* username, const Net::ChannelType channel_type, uint64_t id);
+			Connect(const char* username, uint64_t id, const char* data_port = "");
 			//username(username), Payload(Net::Operation_Connect){}
 
 			//builds the pckt and sends
@@ -153,11 +153,13 @@ namespace net{
 			//awaits for all the files
 			void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
-			inline Payload* clone(){ return new Connect(username.c_str(), channel_type, id); }
+			inline Payload* clone(){ return new Connect(username.c_str(), id, data_port.c_str()); }
 
 			const uint64_t id; //value unique to a client
 			const std::string username;
-			const Net::ChannelType channel_type;
+			
+			std::string data_port;
+
 			bool valid_connection = true;
 			bool command_connection = false; 
 			std::string port;
@@ -226,7 +228,7 @@ namespace net{
 	};
 	class RedefineServer : public Payload {
 		public:
-			RedefineServer(const char* ip, const char* port);
+			RedefineServer(const std::string& port);
 
 			// sends new ip and port of the new main server ( can be sent only be the coordinator for each client )
 			void send(Serializer& serde, std::shared_ptr<Socket> socket);
@@ -234,10 +236,8 @@ namespace net{
 			// TODO: decide what it replies
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 
-			inline Payload* clone(){ return new RedefineServer(ip.c_str(), port.c_str()); }
-			const std::string ip;
+			inline Payload* clone(){ return new RedefineServer(port); }
 			const std::string port; 	
-		private:
 
 	};
 
@@ -273,6 +273,22 @@ namespace net{
 
 			inline Payload* clone(){ return new Coordinator(); }
 
+	};
+
+	class RelayConnection : public Payload {
+		public:
+
+			RelayConnection(const std::string& ip, const std::string& port);
+
+			//builds the pckt and sends
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//reads the username folder and returns a response with the name of the files there
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new RelayConnection(ip, port); }
+
+			const std::string ip;
+			const std::string port;
 	};
 }
 

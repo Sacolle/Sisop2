@@ -39,11 +39,11 @@ namespace net{
 			void print_address();
 
 			void set_connection_info(const std::string& username, 
-				const uint64_t user_id, const Net::ChannelType channel_type);
+				const uint64_t user_id);
 			inline std::string& get_username() { return username; }
 			inline uint64_t get_user_id() { return user_id; }
-			inline Net::ChannelType get_channel_type() { return channel_type; }
 			inline std::string& get_their_ip() { return their_ip; }
+			inline uint16_t get_their_port() { return their_port; }
 
 			
 			void send_checked(const void *buf, const int len);
@@ -67,8 +67,6 @@ namespace net{
 			//NOTE: poderia ser em uma estrutura separada, porém faz mais sentido o id, nome e tipo estar aqui
 			std::string username;
 			uint64_t user_id;
-			Net::ChannelType channel_type;
-
 	};
 
 	class ServerSocket{

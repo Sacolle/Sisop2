@@ -28,11 +28,15 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	auto buff = socket->read_full_pckt();
 	auto pckt = serde.parse_expect(buff, Net::Operation_Connect);
 	auto connect_raw = pckt->op_as_Connect();
+
+	auto& election_manager = net::ElectionManager::getInstance();
+	
 	net::Connect connect(
 		connect_raw->username()->c_str(), 
-		connect_raw->type(), 
-		connect_raw->id()
+		connect_raw->id(),
+		election_manager.data_port.c_str()
 	);
+
 	*id = connect_raw->id(); 
 	connect.command_connection = is_command; 
 
@@ -132,17 +136,18 @@ void *server_loop_commands(void *arg){
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
 			//std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
-
-			pthread_mutex_lock(&g_replicator_mutex);
-			for(auto s_opt: election_manager.get_send_sockets()){
-				if(!s_opt.has_value()) continue;
-				auto s = s_opt.value();
-				std::shared_ptr<net::Payload> replicated_payload(payload->clone());
-				//se for um q tem arquivo, dar append nas pasta do user no path do arquivo
-				replicated_payload->send(serde, s);
-				replicated_payload->await_response(serde, s);
+			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
+				pthread_mutex_lock(&g_replicator_mutex);
+				for(auto s_opt: election_manager.get_send_sockets()){
+					if(!s_opt.has_value()) continue;
+					auto s = s_opt.value();
+					std::shared_ptr<net::Payload> replicated_payload(payload->clone());
+					//se for um q tem arquivo, dar append nas pasta do user no path do arquivo
+					replicated_payload->send(serde, s);
+					replicated_payload->await_response(serde, s);
+				}
+				pthread_mutex_unlock(&g_replicator_mutex);
 			}
-			pthread_mutex_unlock(&g_replicator_mutex);
 			
 			payload->reply(serde, socket);
 			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
@@ -306,7 +311,7 @@ void* election_socket_setup(void* s){
 			//manda essa msg para saber o peso da conexão
 			//importante depois na votação
 			//fazendo desse jeito seco, pq sim
-			auto pckt = serde.build_connect("", Net::ChannelType_MIN, election_manager.valor);
+			auto pckt = serde.build_connect("", election_manager.valor);
 			s->send_checked(pckt);
 			
 			election_manager.add_send_socket(s);
@@ -384,6 +389,8 @@ void do_the_election(){
 				election.send(serde, s);
 				//std::cout << "esperando resposta" << std::endl;
 				election.await_response(serde, s);
+			}catch(const net::ReceptionException& e){
+				std::cout << "Recebeu pacote de eleição errado " << e.what() << std::endl;
 			}catch(...){
 				//std::cout << "removendo socket de ip: " << s->get_their_ip() << std::endl;
 				sockets_to_remove.push_back(s);
@@ -400,7 +407,7 @@ void do_the_election(){
 	if(!election.got_response()){
 		//esse cara aqui eh o coordenador
 		//NOTE: espera todos os election serem mandados e lidos e tal
-		sleep(2);
+		sleep(1);
 		net::Coordinator coordinator;
 		for(auto s_opt: election_manager.get_send_sockets()){
 			if(!s_opt.has_value()) continue;
@@ -408,15 +415,40 @@ void do_the_election(){
 			try{
 				coordinator.send(serde, s);
 				coordinator.await_response(serde, s);
+			}catch(const net::ReceptionException& e){
+				std::cout << "Recebeu pacote de eleição errado " << e.what() << std::endl;
 			}catch(...){
 				std::cout << "removendo socket de ip: " << s->get_their_ip() << std::endl;
 				sockets_to_remove.push_back(s);
 			}
 		}
-		//TODO: faz aqui as alterações no election_manager
 		election_manager.set_is_coordinator(true);
 		std::cout << "eu sou o coordenador" << std::endl;
-		//TODO: mandar para os clientes na lista
+
+		//manda para os clientes na lista
+		for(auto pair: election_manager.get_clients_adress()){
+			auto ip = pair.first.c_str();
+			auto port = "20004";//pair.second.c_str(); FIXME: hard coded no client, n tem como testar com mais de 1
+			net::ClientSocket notify_clients;
+			try{
+				notify_clients.connect(ip, port);
+			}catch(const net::NetworkException& e){
+				std::cout << "erro em conectar no endereço " << ip << ":" << port << std::endl;
+				//NOTE: não faz exit caso isso aconteça, só vai para o proximo endereço
+				//pois agt n deleta os clientes que não estão mais conectados
+				continue;
+			}
+			auto s = notify_clients.build();
+			net::RedefineServer redefine_server(election_manager.root_port); //my port
+
+			try{
+				redefine_server.send(serde, s);
+				redefine_server.await_response(serde, s);
+			}catch(...){
+				std::cout << "Falha em comunicar com o ip: " << s->get_their_ip() << std::endl;
+			}
+		}
+
 		election_manager.set_in_election(false);
 	}
 
@@ -507,6 +539,8 @@ void* election_observer(void* args){
 						}else{
 							election_manager.set_in_election(true);
 						}
+					}catch(const net::ReceptionException& e){
+						std::cout << "Recebeu pacote de eleição errado " << e.what() << std::endl;
 					}catch(...){
 						sockets_to_remove.push_back(s);
 					}
@@ -550,6 +584,17 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 		);
 		return upload;
 	} break;
+	case Net::Operation_RelayConnection: {
+		auto payload = msg->op_as_RelayConnection();
+		auto relay_connection = std::make_shared<net::RelayConnection>(
+			payload->ip()->str(),
+			payload->port()->str()
+		);
+		auto& election_manager = net::ElectionManager::getInstance();
+		election_manager.add_clients_adress(relay_connection->ip, relay_connection->port);
+
+		return relay_connection;
+	} break;
 	case Net::Operation_Response:
 		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ")
 			.append(utils::pckt_type_to_name(msg->op_type())));
@@ -574,8 +619,8 @@ int main(int argc, char** argv) {
 	char* data_port = argv[4];
 	char* election_port = argv[5];
 
-	//primeira vez q chama get instance, precisa passar o valor de eleição
-	auto& election_manager = net::ElectionManager::getInstance(election_value); 
+	//primeira vez q chama get instance, precisa passar o valor de eleição e a porta dp cmd_server
+	auto& election_manager = net::ElectionManager::getInstance(election_value, cmd_port, data_port); 
 	net::Serializer serde;
 
 	net::ServerSocket socket_command_listen_server(true);
@@ -634,11 +679,21 @@ int main(int argc, char** argv) {
 					// A thread atual se mantém a espera de conexão 
 					//TODO: mandar para as replicações os IDs dos clientes
 					if (s_commands != nullptr){
-						//mutex
-						//for send_socket -> envia o ip e porta do kr
-						//guardar info no election_manager (com mutex)
-						//cria a pasta com o payload
-						//mutex
+						pthread_mutex_lock(&g_replicator_mutex);
+
+						for(auto s_opt: election_manager.get_send_sockets()){
+							if(!s_opt.has_value()) continue;
+							auto s = s_opt.value();
+							//cria o pacote de ralay e envia
+							net::RelayConnection relay(
+								s_commands->get_their_ip(), 
+								std::to_string(s_commands->get_their_port())
+							);
+							//se for um q tem arquivo, dar append nas pasta do user no path do arquivo
+							relay.send(serde, s);
+							relay.await_response(serde, s);
+						}
+						pthread_mutex_unlock(&g_replicator_mutex);
 
 						s_commands->print_address();
 						pthread_t t_commands;

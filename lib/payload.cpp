@@ -285,37 +285,25 @@ namespace net {
 	}
 	//awaits for ok or err pkct
 	//gatters the info
-	Connect::Connect(const char* username, const Net::ChannelType channel_type, uint64_t id): 
+	Connect::Connect(const char* username, uint64_t id, const char* data_port): 
 		username(username), 
-		channel_type(channel_type),
 		id(id), 
+		data_port(data_port),
 		Payload(Net::Operation_Connect){}
 
 	//builds the pckt and sends
 	void Connect::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_connect(username, channel_type, id);
+		auto pckt = serde.build_connect(username, id);
 		socket->send_checked(pckt);
 
-		socket->set_connection_info(username, id, channel_type);
+		socket->set_connection_info(username, id);
 	}
 
 	//sends all the files associated with the username and then an response at the end
 	void Connect::reply(Serializer& serde, std::shared_ptr<Socket> socket){
-		socket->set_connection_info(username, id, channel_type);
-		//TODO: send all files associated with the username
-		std::string msg;
-		if (this->valid_connection){
-			msg += "Conectado corretamente ao user ";
-			msg += username;
-			msg += " com id único ";
-			msg += std::to_string(id);
-		} else {
-			msg += "Connection failed!";
-		}
-		std::string port(PORT_DATA); 
-		FlatBufferBuilder*  pckt;
-		if (this->command_connection) pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg, &port);
-		else pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, msg);
+		socket->set_connection_info(username, id);
+
+		auto pckt = serde.build_response(this->valid_connection ? Net::Status_Ok : Net::Status_Error, data_port);
 		socket->send_checked(pckt);
 	}
 
@@ -329,13 +317,9 @@ namespace net {
 			throw InvalidConnectionException(response->msg()->c_str());
 		}else {
 			std::cout << "Conexão estabelecida corretamente:\n\tUsername: " 
-				<< username << "\n\t" 
-				<< "Id: " << id << "\n\t"
-				<< "Resposta do servidor: " << response->msg()->c_str() << std::endl;  
+				<< username << "\n\t" << "Id: " << id << std::endl;
 		}
-		if (response->port()) {
-			port = std::string(strdup(response->port()->c_str()));
-		}
+		port = response->msg()->str();
 	}
 
 	ListFiles::ListFiles(): Payload(Net::Operation_ListFiles){}
@@ -450,11 +434,12 @@ namespace net {
 		std::cout << "got ping back" << std::endl;
 	}
 
-	RedefineServer::RedefineServer(const char* ip, const char* port): ip(ip), port(port), Payload(Net::Operation_RedefineServer){}
+	RedefineServer::RedefineServer(const std::string& port): 
+		port(port), Payload(Net::Operation_RedefineServer){}
 
 	//sends the name of the file to be deleted
 	void RedefineServer::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_redefine_server(ip, port);
+		auto pckt = serde.build_redefine_server(port);
 		socket->send_checked(pckt);
 	}
 
@@ -504,8 +489,22 @@ namespace net {
 		auto pckt = serde.build_coordinator();
 		socket->send_checked(pckt);
 	}
-	//reads the username folder and returns a response with the name of the files there
 	void Coordinator::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
+		socket->send_checked(pckt);
+	}
+
+	RelayConnection::RelayConnection(const std::string& ip, const std::string& port):
+		ip(ip), port(port), Payload(Net::Operation_RelayConnection){}
+	
+
+	//builds the pckt and sends
+	void RelayConnection::send(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_relay_conection(ip, port);
+		socket->send_checked(pckt);
+	}
+
+	void RelayConnection::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
 		socket->send_checked(pckt);
 	}

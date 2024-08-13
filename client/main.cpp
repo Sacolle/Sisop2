@@ -20,12 +20,13 @@
 #include "serializer.hpp"
 #include "utils.hpp"
 #include "exceptions.hpp"
+#include "mutex.hpp"
 
 #define BACKLOG 10
 #define BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
 
 pthread_mutex_t mutex_close_threads = PTHREAD_MUTEX_INITIALIZER;
-bool close_threads = false;
+
 std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(
 	const std::string& ip, const std::string& port, int id, const std::string& username, net::Serializer& serde);
 
@@ -34,6 +35,9 @@ int client_loop_commands(	std::shared_ptr<net::Socket> socket,
 							const std::string& username,
 							int id);
 void *client_loop_data(void *arg);
+
+net::Mutex<bool> g_close_cmd_thread = net::Mutex(false);
+net::Mutex<bool> g_close = net::Mutex(false);
 
 net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	//TODO: parse
@@ -45,9 +49,7 @@ net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 		}else if(cmd == "sendreq"){ return new net::SendFileRequest(args.c_str());
 		}else if(cmd == "delete"){ return new net::Delete(args.c_str());
 		}else if(cmd == "exit"){
-			pthread_mutex_lock(&mutex_close_threads);
-			close_threads = true;
-			pthread_mutex_unlock(&mutex_close_threads);
+			g_close.lock().get() = true;
 		}else if(cmd == "ping"){ return new net::Ping();
 		}else if(cmd == "download"){
 			return new net::Download(args.c_str());
@@ -85,14 +87,6 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		upload->is_server = true;
 		return upload;
 	} break;
-	case Net::Operation_RedefineServer: {
-		auto payload = msg->op_as_RedefineServer();
-		auto redefine_server = std::make_shared<net::RedefineServer>(
-			payload->ip()->c_str(),
-			payload->port()->c_str()
-		);
-		return redefine_server; 
-	} break; 
 	case Net::Operation_ListFiles:
 	case Net::Operation_Ping:
 	case Net::Operation_Exit:
@@ -119,11 +113,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 
 std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, const char* username, int id){
 	//TODO: read the connect info from args[]
-	net::Connect connect(
-		username, 
-		Net::ChannelType_Main,
-		id
-	);
+	net::Connect connect(username, id);
 	connect.send(serde, socket);
 	connect.await_response(serde, socket);
 	return connect.port; 
@@ -220,26 +210,26 @@ std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_cl
 	const std::string& ip, const std::string& port, int id, const std::string& username, net::Serializer& serde){
 	
 	/* Conexão com o socket de comandos */
+
+	std::cout << "começou connect client" << std::endl;
 	net::ClientSocket base_socket_commands;
 
 	try {
 		base_socket_commands.connect(ip.c_str(), port.c_str());
 	}
 	catch(const std::exception& e){
-		std::cerr << e.what() << '\n';
+		std::cerr << "failed to connect command socket:\n" <<  e.what() << '\n';
 		exit(1);
 	}
 
 	auto socket_commands = base_socket_commands.build();
-
-
 	
 	std::string server_port_data;
 
 	// Command handshake
 	try {
 		server_port_data = initial_handshake(serde, socket_commands, username.c_str(), id);
-	} catch (net::InvalidConnectionException e){
+	} catch (net::InvalidConnectionException& e){
 		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
 		exit(1);
 	}
@@ -302,15 +292,22 @@ int client_loop_commands(std::shared_ptr<net::Socket> socket,
 
 	/* Wait for events and/or terminal input. */
 	while (1) {
+		{
+			auto lock = g_close_cmd_thread.lock();
+			if(lock.get()){
+				lock.get() = false;
+				break;
+			}
+		}
+		{
+			if(g_close.lock().get()){
+				exit(0);
+			}
+		}
 
 		try {
-			if (close_threads) {
-				pthread_mutex_lock(&mutex_close_threads);
-				exit(EXIT_SUCCESS);
-				pthread_mutex_unlock(&mutex_close_threads);
-			}
-
-			int poll_num = poll(fds, nfds, -1);
+			//lista de descitores, numero deles, timeout em MILISEGUNDOS
+			int poll_num = poll(fds, nfds, 1000);
 
 			if (poll_num == -1) {
 				if (errno == EINTR)
@@ -337,25 +334,31 @@ int client_loop_commands(std::shared_ptr<net::Socket> socket,
 			}
 		}
 		catch (const net::CloseConnectionException& e) {
-			return -1;
+			std::cout << "main loop closed conection" << std::endl;
+
+			auto lock = g_close_cmd_thread.lock();
+			lock.get() = false;
+			break;
 		}
 	}
 
 	/* Close inotify file descriptor. */
 	close(inotify_fd);
 	close(watch_folder_fd);
-	return 0;
+	
+	std::cin.clear();
+	std::cout.flush();
+
+	return -1;
 }
 
 void *client_loop_data(void *arg) {
-	std::shared_ptr<net::Socket> socket((net::Socket *) arg);
+	std::shared_ptr<net::Socket> socket = *((std::shared_ptr<net::Socket>*) arg);
 	net::Serializer serde;
 	while(1) {
 		try {
-			if (close_threads) {
-				pthread_mutex_lock(&mutex_close_threads);
+			if (g_close.lock().get()) {
 				exit(EXIT_SUCCESS);
-				pthread_mutex_unlock(&mutex_close_threads);
 			}
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
@@ -364,7 +367,11 @@ void *client_loop_data(void *arg) {
 		}
 		catch(const net::CloseConnectionException& e) {
 			/* Conexão acabou -> Fecha thread e a thread de comandos reinicia a operação com novas conexões */
+			std::cout << "closed data thread" << std::endl;
+			auto lock = g_close_cmd_thread.lock();
+			lock.get() = true;
 			pthread_exit(0);
+			return nullptr;
 		}catch (std::exception& e) {
 			std::cerr << "uncaught exception: "  << e.what() << std::endl;
 		}
@@ -388,6 +395,16 @@ int main(int argc, char** argv){
 	std::filesystem::remove_all(userfolder);
 	std::filesystem::create_directory(userfolder);
 	net::Serializer serde;
+
+	net::ServerSocket wait_for_coordinator_socket_listen; 
+	// Abre a socket que aguardará mensagem do novo coordenador
+	try{
+		wait_for_coordinator_socket_listen.open(PORT_CHANGE_COORDINATOR, BACKLOG);
+	}
+	catch(const net::NetworkException& e){
+		std::cerr << e.what() << '\n';
+		exit(1);
+	}
 	/* Faz o loop de operação, caso servidor falhe, reinicia conexão com réplica */
 	while(1) {
 		auto sockets = connect_client(ip, port, id, username, serde);
@@ -395,43 +412,41 @@ int main(int argc, char** argv){
 		auto socket_commands = sockets.second;
 		/* Início da thread para leitura de dados */
 		pthread_t t_data;
-		int data_error = pthread_create(&t_data, NULL, client_loop_data, socket_data.get());
+		pthread_create(&t_data, NULL, client_loop_data, &socket_data);
 		/* Loop de espera de comandos */
 		int commands_error = client_loop_commands(socket_commands, username, id);
+		pthread_join(t_data, nullptr);
 
-		/* Caso ambas as threads retornem que houve uma exceção de fim de conexão */
-		if (data_error == -1 && commands_error == -1) {
-			/* Conexão acabou -> Criar socket para aguardar conexão do novo coordenador -> Aguardar mensagem do novo coordenador -> Criar novas conexões */
+		//se chegou neste ponto quer dizer q tanto o client_loop data e commands param a execução,
+		//o que só ocorre num close connection
 
-			/* Criação de socket para receber a mensagem do novo coordenador */
-			net::ServerSocket wait_for_coordinator_socket_listen; 
-			// Abre a socket que aguardará mensagem do novo coordenador
-			try{
-				wait_for_coordinator_socket_listen.open(PORT_CHANGE_COORDINATOR, BACKLOG);
-			}
-			catch(const net::NetworkException& e){
-				std::cerr << e.what() << '\n';
-				exit(1);
-			}
-			/* Espera a conexão com o novo coordenador */
-			try {
-				std::shared_ptr<net::Socket> wait_for_coordinator_socket(wait_for_coordinator_socket_listen.accept());
-				/* Recebe a mensagem com o novo ip a se conectar e atualiza a informação de qual é o ip do server */
-				std::string new_ip, new_port;
-				auto buff = wait_for_coordinator_socket->read_full_pckt();
-				auto payload = parse_payload(buff);			
-				if (payload->get_type() != Net::Operation_RedefineServer){
-					std::string s = utils::pckt_type_to_name(payload->get_type()); 
-					throw std::runtime_error("Unexpected packet " + s); 
-				}
-				payload->reply(serde, wait_for_coordinator_socket); 
-				ip = static_cast<net::RedefineServer*>(payload.get())->ip;
-				port =  static_cast<net::RedefineServer*>(payload.get())->port;
-				
-			}
-			catch (const net::NetworkException& e){
-				std::cerr << e.what() << '\n';
-			}
+		try {
+			std::cout << "accept" << std::endl;
+			std::shared_ptr<net::Socket> wait_for_coordinator_socket(wait_for_coordinator_socket_listen.accept());
+			/* Recebe a mensagem com o novo ip a se conectar e atualiza a informação de qual é o ip do server */
+			std::string new_port;
+			std::cout << "buff" << std::endl;
+			auto buff = wait_for_coordinator_socket->read_full_pckt();
+			//só deve ser um redefine server
+			std::cout << "payload" << std::endl;
+			auto payload = serde.parse_expect(buff, Net::Operation_RedefineServer);			
+
+			auto redefine_server_paylod = payload->op_as_RedefineServer();
+			
+			net::RedefineServer redefine_server(redefine_server_paylod->port()->str());
+
+			std::cout << "reply" << std::endl;
+			redefine_server.reply(serde, wait_for_coordinator_socket); 
+
+			//pega o ip de quem mandou via socket e a porta do pacote mandou
+			ip = wait_for_coordinator_socket->get_their_ip();
+			port = redefine_server.port;
+
+			std::cout << "going to connect to: " << ip << ":" << port << std::endl;
+			
+		}
+		catch (const net::NetworkException& e){
+			std::cerr << e.what() << '\n';
 		}
 	}
 

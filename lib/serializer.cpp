@@ -72,10 +72,10 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_connect(std::string const& username, Net::ChannelType type, uint64_t id){
+	FlatBufferBuilder* Serializer::build_connect(std::string const& username, uint64_t id){
 		builder.Clear();
 
-		auto connect = Net::CreateConnect(builder, id, type, builder.CreateString(username));
+		auto connect = Net::CreateConnect(builder, id, builder.CreateString(username));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Connect, connect.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -100,20 +100,19 @@ namespace net{
 		return &builder;
 	}
 
-		FlatBufferBuilder* Serializer::build_redefine_server(std::string const& ip, std::string const& port){
+	FlatBufferBuilder* Serializer::build_redefine_server(std::string const& port){
 		builder.Clear();
 
-		auto redefine_server = Net::CreateRedefineServer(builder, builder.CreateString(ip), builder.CreateString(ip));
+		auto redefine_server = Net::CreateRedefineServer(builder, builder.CreateString(port));
 		auto packet = Net::CreatePacket(builder, Net::Operation_RedefineServer, redefine_server.Union());
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg, std::string *port){
+	FlatBufferBuilder* Serializer::build_response(Net::Status status, std::string const& msg){
 		builder.Clear();
-		flatbuffers::Offset<Net::Response> response;
-		if (port == nullptr) response = Net::CreateResponse(builder, status, builder.CreateString(msg));
-		else response = Net::CreateResponse(builder, status, builder.CreateString(msg), builder.CreateString(*port));
+
+		auto response = Net::CreateResponse(builder, status, builder.CreateString(msg));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Response, response.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -137,13 +136,19 @@ namespace net{
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;
-
 	}
-	FlatBufferBuilder* build_relay_conection(std::string const& ip, std::string const& port);
+	FlatBufferBuilder* Serializer::build_relay_conection(std::string const& ip, std::string const& port){
+		builder.Clear();
+
+		auto relay_connection = Net::CreateRelayConnection(builder, builder.CreateString(ip), builder.CreateString(port));
+		auto packet = Net::CreatePacket(builder, Net::Operation_RelayConnection, relay_connection.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+	}
 }
 
-/*
-//throws `net::TransmissionException`, 
+/* //throws `net::TransmissionException`, 
 // `net::CloseConnectionException` and 
 // `std::ios_base::failure`
 /*

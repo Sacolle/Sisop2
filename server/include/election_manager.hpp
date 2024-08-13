@@ -13,8 +13,12 @@ namespace net{
 
 			ElectionManager(ElectionManager const&) = delete;
 			void operator=(ElectionManager const&) = delete;
-			static ElectionManager& getInstance(int valor = 0){
-				static ElectionManager instance(valor);
+			static ElectionManager& getInstance(
+				int valor = 0, 
+				const char* root_port = nullptr,
+				const char* data_port = nullptr
+			){
+				static ElectionManager instance(valor, root_port, data_port);
 				return instance;
 			}
 
@@ -56,9 +60,17 @@ namespace net{
 			std::vector<std::optional<std::shared_ptr<Socket>>>& get_send_sockets(){ return send_sockets; }
 
 			const int valor;
+			const std::string root_port;
+			const std::string data_port;
+
+			void add_clients_adress(const std::string& ip, const std::string& port);
+			
+			inline std::vector<std::pair<std::string, std::string>>& 
+				get_clients_adress() {return clients_adress; }
 
 		private:
-			ElectionManager(int v): valor(v), 
+			ElectionManager(int v, const char* root_port, const char* data_port): 
+				valor(v), root_port(root_port), data_port(data_port),
 				_in_election(Mutex(false)), _is_coordinator(Mutex(false)){}
 
 
@@ -70,6 +82,8 @@ namespace net{
 			std::vector<std::optional<std::shared_ptr<Socket>>> send_sockets;
 
 			std::optional<std::shared_ptr<Socket>> send_socket_to_remove = std::nullopt;
+
+			std::vector<std::pair<std::string, std::string>> clients_adress;
 	};
 }
 

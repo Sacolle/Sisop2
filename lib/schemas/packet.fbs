@@ -14,6 +14,7 @@ union Operation {
 	RedefineServer, 
 	Election,
 	Coordinator,
+	RelayConnection,
 	Ping
 }
  
@@ -28,12 +29,7 @@ enum ChannelType: ubyte { Main, FileWatch, Relay }
 
 table Connect {
 	id: ulong;
-	type: ChannelType;
 	username: string;
-	//TODO: add type: 
-	// - main -> for client cmd req to server reply
-	// - side -> for client file watch req to server reply
-	// - sync -> for server relay file update to clinet reply 
 }
 
 table SendFileRequest {
@@ -42,7 +38,6 @@ table SendFileRequest {
 }
 
 table RedefineServer {
-	ip: string;
 	port: string;
 }
 
@@ -77,7 +72,6 @@ enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq, Yes, 
 table Response {
 	status: Status;
 	msg: string;
-	port: string; //NOTE: n precisa, né?
 }
 
 table Election {
@@ -86,6 +80,11 @@ table Election {
 
 table Coordinator {
 
+}
+
+table RelayConnection{
+	ip: string;
+	port: string;
 }
  
 root_type Packet;
