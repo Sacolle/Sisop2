@@ -68,7 +68,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	case Net::Operation_Delete: {
 		auto payload = msg->op_as_Delete();
 		return std::make_shared<net::Delete>(
-			payload->filename()->c_str()
+			payload->filename()->c_str(), payload->username()->c_str()
 		);
 	} break;
 	case Net::Operation_FileMeta: {
@@ -76,7 +76,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		//std::cout << "filemeta" << std::endl;
 		return std::make_shared<net::Upload>(
 			payload->name()->c_str(),
-			payload->size()
+			payload->size(), payload->username()->c_str()
 		);
 	} break;
 	case Net::Operation_SendFileRequest: {
@@ -138,7 +138,6 @@ void *server_loop_commands(void *arg){
 				if(!s_opt.has_value()) continue;
 				auto s = s_opt.value();
 				std::shared_ptr<net::Payload> replicated_payload(payload->clone());
-				//se for um q tem arquivo, dar append nas pasta do user no path do arquivo
 				replicated_payload->send(serde, s);
 				replicated_payload->await_response(serde, s);
 			}
@@ -191,7 +190,7 @@ void update_client (net::Serializer& serde, std::shared_ptr<net::Socket> socket)
 	std::string path = utils::get_sync_dir_path(socket->get_username());
 	/* For all files in sync_dir, send it to client */
 	for (const auto &entry : std::filesystem::directory_iterator(path)) {
-		net::Upload file(entry.path().filename().string().c_str());
+		net::Upload file(entry.path().filename().string().c_str(), socket->get_username().c_str());
 		file.is_server = true; 
 		file.send(serde, socket);
 		file.await_response(serde, socket);
@@ -539,14 +538,14 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 	case Net::Operation_Delete: {
 		auto payload = msg->op_as_Delete();
 		return std::make_shared<net::Delete>(
-			payload->filename()->c_str()
+			payload->filename()->c_str(), payload->username()->c_str()
 		);
 	} break;
 	case Net::Operation_FileMeta: {
 		auto payload = msg->op_as_FileMeta();
 		auto upload = std::make_shared<net::Upload>(
 			payload->name()->c_str(),
-			payload->size()
+			payload->size(), payload->username()->c_str()
 		);
 		return upload;
 	} break;

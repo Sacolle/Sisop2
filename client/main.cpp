@@ -35,15 +35,17 @@ int client_loop_commands(	std::shared_ptr<net::Socket> socket,
 							int id);
 void *client_loop_data(void *arg);
 
+
+std::string username_global; 
 net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	//TODO: parse
 	utils::trim(cmd);
 	utils::trim(args);
 
 	try{
-		if(cmd == "upload"){ return new net::Upload(args.c_str());
+		if(cmd == "upload"){ return new net::Upload(args.c_str(), username_global.c_str());
 		}else if(cmd == "sendreq"){ return new net::SendFileRequest(args.c_str());
-		}else if(cmd == "delete"){ return new net::Delete(args.c_str());
+		}else if(cmd == "delete"){ return new net::Delete(args.c_str(), username_global.c_str());
 		}else if(cmd == "exit"){
 			pthread_mutex_lock(&mutex_close_threads);
 			close_threads = true;
@@ -61,7 +63,6 @@ net::Payload* get_cli_payload(std::string &cmd, std::string& args){
 	}catch(const std::exception& e){
 		std::cout << "Error: " << e.what() << std::endl;
 	}
-
 	return nullptr;
 }
 
@@ -72,7 +73,7 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	case Net::Operation_Delete: {
 		auto payload = msg->op_as_Delete();
 		return std::make_shared<net::Delete>(
-			payload->filename()->c_str()
+			payload->filename()->c_str(), payload->username()->c_str()
 		);
 	} break;
 	case Net::Operation_FileMeta: {
@@ -80,7 +81,8 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		//std::cout << "filemeta" << std::endl;
 		auto upload = std::make_shared<net::Upload>(
 			payload->name()->c_str(),
-			payload->size()
+			payload->size(),
+			payload->username()->c_str()
 		);
 		upload->is_server = true;
 		return upload;
@@ -208,7 +210,7 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 				// MASKPRINT(IN_MOVED_FROM, "tirado");
 				// MASKPRINT(IN_DELETE, "deletado");
 
-				net::Delete req(filename);
+				net::Delete req(filename, username_global.c_str());
 				req.send(serde, socket);
 				req.await_response(serde, socket);
 			}
@@ -382,6 +384,7 @@ int main(int argc, char** argv){
 	std::string ip(argv[2]); 
 	std::string port(argv[3]); 
 	std::string username(argv[1]);
+	username_global = username; 
 	std::string userfolder = utils::get_sync_dir_path(username);
 
 	// Create an empty directory to receive data from server

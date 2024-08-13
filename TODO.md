@@ -47,7 +47,7 @@ Server:
  - [x] Adicionar um método para setar as sockets ser não bloqueante
  - [x] Implementar o algoritmo do bully, usando essas conexões e essas threads já alocadas para o relay dos pacotes
  - [ ] Fazer um relay de um pacote novo -> pacote que faz o relay de quais usuários estão conectados e os seus IPs
- - [ ] Modificar o schema dos pacotes para poder reconecer de qual usuário ele é transmitido
+ - [x] Modificar o schema dos pacotes para poder reconecer de qual usuário ele é transmitido
  - [ ] Notificar os usuários conectados qual o novo servidor
 
 Cada servidor pode gerir em uma única thread todas as conexões, 

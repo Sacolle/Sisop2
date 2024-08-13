@@ -45,10 +45,10 @@ namespace net{
 		//TODO:
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_filemeta(std::string const& filename, uint64_t size){
+	FlatBufferBuilder* Serializer::build_filemeta(std::string const& filename, std::string const& username, uint64_t size){
 		builder.Clear();
 
-		auto filemeta = Net::CreateFileMeta(builder, builder.CreateString(filename), size);
+		auto filemeta = Net::CreateFileMeta(builder, builder.CreateString(filename),builder.CreateString(username), size);
 		auto packet = Net::CreatePacket(builder, Net::Operation_FileMeta, filemeta.Union());
 		builder.FinishSizePrefixed(packet);
 
@@ -90,21 +90,21 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_delete(std::string const& filename){
+	FlatBufferBuilder* Serializer::build_delete(std::string const& filename, std::string const& username){
 		builder.Clear();
 
-		auto del = Net::CreateDelete(builder, builder.CreateString(filename));
+		auto del = Net::CreateDelete(builder, builder.CreateString(filename), builder.CreateString(username));
 		auto packet = Net::CreatePacket(builder, Net::Operation_Delete, del.Union());
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;
 	}
 
-		FlatBufferBuilder* Serializer::build_redefine_server(std::string const& ip, std::string const& port){
+		FlatBufferBuilder* Serializer::build_ip_information(std::string const& ip, std::string const& port){
 		builder.Clear();
 
-		auto redefine_server = Net::CreateRedefineServer(builder, builder.CreateString(ip), builder.CreateString(ip));
-		auto packet = Net::CreatePacket(builder, Net::Operation_RedefineServer, redefine_server.Union());
+		auto ip_information = Net::CreateIpInformation(builder, builder.CreateString(ip), builder.CreateString(ip));
+		auto packet = Net::CreatePacket(builder, Net::Operation_IpInformation, ip_information.Union());
 		builder.FinishSizePrefixed(packet);
 
 		return &builder;

@@ -96,22 +96,22 @@ namespace net {
 	}
 
 	//se falha, envia um response err
-	Upload::Upload(const char* filename): 
-		filename(filename), size(0), Payload(Net::Operation_FileMeta){}
-	Upload::Upload(const char* filename, uint64_t file_size):
-		filename(filename), size(file_size), Payload(Net::Operation_FileMeta){}
+	Upload::Upload(const char* filename, const char* username): 
+		filename(filename), size(0), username(username), Payload(Net::Operation_FileMeta){}
+	Upload::Upload(const char* filename, uint64_t file_size,  const char* username):
+		filename(filename), size(file_size), username(username), Payload(Net::Operation_FileMeta){}
 
 	//read the file and sends the packets
 	//`throws` in `socket->send_checked`
 	void Upload::send(Serializer& serde, std::shared_ptr<Socket> socket){
 		//open the file efectivelly
 		if (is_server){  
-			size = file.open_read(filename, utils::get_sync_dir_path(socket->get_username()));
+			size = file.open_read(filename, utils::get_sync_dir_path(username));
 		} else {
 			size = file.open_read(filename);
 		}
 
-		auto filemeta_pckt = serde.build_filemeta(utils::filename_without_path(filename), size);
+		auto filemeta_pckt = serde.build_filemeta(utils::filename_without_path(filename), username, size);
 		socket->send_checked(filemeta_pckt);
 
 		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
@@ -126,7 +126,7 @@ namespace net {
 	//receives the packets and writes to file
 	void Upload::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		
-		file.open_recv(utils::filename_without_path(filename), utils::get_sync_dir_path(socket->get_username()));
+		file.open_recv(utils::filename_without_path(filename), utils::get_sync_dir_path(username));
 
 		//already received the filemeta and builded this upload obj, having the corret size
 		//receive the following pckts
@@ -216,7 +216,7 @@ namespace net {
 		switch (response->status()){
 		case Net::Status_Ok:{
 			// std::cout << "Resposta: " << response->msg()->c_str() << std::endl;  
-			net::Upload upload_file(filename.c_str());
+			net::Upload upload_file(filename.c_str(), socket->get_username().c_str());
 			upload_file.send(serde, socket);
 			upload_file.await_response(serde, socket);
 			return;
@@ -244,7 +244,7 @@ namespace net {
 	//opens the file (if it has), and sends the meta + chunks of data
 	void Download::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		size = file.open_read(utils::filename_without_path(filename), utils::get_sync_dir_path(socket->get_username()));
-		auto filemeta_pckt = serde.build_filemeta(filename, size);
+		auto filemeta_pckt = serde.build_filemeta(filename, socket->get_username(), size);
 		socket->send_checked(filemeta_pckt);
 
 		std::vector<uint8_t> buff(READFILE_BUFFSIZE, 0);
@@ -401,11 +401,11 @@ namespace net {
 	}
 
 
-	Delete::Delete(const char* filename): filename(filename), Payload(Net::Operation_Delete){}
+	Delete::Delete(const char* filename, const char* username): filename(filename), username(username), Payload(Net::Operation_Delete){}
 
 	//sends the name of the file to be deleted
 	void Delete::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_delete(filename);
+		auto pckt = serde.build_delete(filename, username);
 		socket->send_checked(pckt);
 	}
 
@@ -413,7 +413,7 @@ namespace net {
 	void Delete::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		try{
 			//TODO: close stuff
-			std::string file_to_remove(utils::get_sync_dir_path(socket->get_username()));
+			std::string file_to_remove(utils::get_sync_dir_path(username));
 			file_to_remove += "/";
 			file_to_remove += filename;
 			remove(file_to_remove.c_str());

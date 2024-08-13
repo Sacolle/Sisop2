@@ -49,6 +49,7 @@ table RedefineServer {
 
 table FileMeta {
 	name: string;
+	username: string; 
 	size: ulong;		//total size of the file
 	// -- other stuff
 }
@@ -70,6 +71,7 @@ table Download {
 
 table Delete {
 	filename: string;
+	username: string; 
 }
 
 enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq, Yes, No }

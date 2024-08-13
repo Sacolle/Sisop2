@@ -71,8 +71,8 @@ namespace net{
 	class Upload : public Payload {
 		public:
 			//opens the file for the request
-			Upload(const char* filename);
-			Upload(const char* filename, uint64_t file_size);
+			Upload(const char* filename, const char* username);
+			Upload(const char* filename, uint64_t file_size, const char* username);
 			//size(size), filename(filename), Payload(Net::Operation_FileMeta)
 
 			//read the file and sends the packets 
@@ -82,11 +82,12 @@ namespace net{
 			//awaits for ok or err pkct
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
-			inline Payload* clone(){ return new Upload(filename.c_str(), size); }
+			inline Payload* clone(){ return new Upload(filename.c_str(), size, username.c_str()); }
 
 			bool is_server = false; 	
 		private:
 			std::string filename;
+			std::string username; 
 			SyncFile file;
 			uint64_t size;
 	};
@@ -211,7 +212,7 @@ namespace net{
 	//lida com IO
 	class Delete : public Payload {
 		public:
-			Delete(const char* filename);
+			Delete(const char* filename, const char* username);
 
 			//sends the name of the file to be deleted
 			void send(Serializer& serde, std::shared_ptr<Socket> socket);
@@ -220,9 +221,10 @@ namespace net{
 			//awaits for the response
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
-			inline Payload* clone(){ return new Delete(filename.c_str()); }
+			inline Payload* clone(){ return new Delete(filename.c_str(), username.c_str()); }
 		private:
 			const std::string filename;	
+			const std::string username; 
 	};
 	class RedefineServer : public Payload {
 		public:
