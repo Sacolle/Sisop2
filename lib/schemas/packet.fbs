@@ -11,7 +11,7 @@ union Operation {
 	Download,
 	Delete,
 	Response,
-	RedefineServer, 
+	IpInformation, 
 	Election,
 	Coordinator,
 	Ping
@@ -41,7 +41,7 @@ table SendFileRequest {
 	hash: ulong;
 }
 
-table RedefineServer {
+table IpInformation {
 	ip: string;
 	port: string;
 }

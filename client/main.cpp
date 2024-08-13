@@ -87,8 +87,8 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 		upload->is_server = true;
 		return upload;
 	} break;
-	case Net::Operation_RedefineServer: {
-		auto payload = msg->op_as_RedefineServer();
+	case Net::Operation_IpInformation: {
+		auto payload = msg->op_as_IpInformation();
 		auto redefine_server = std::make_shared<net::RedefineServer>(
 			payload->ip()->c_str(),
 			payload->port()->c_str()
@@ -423,7 +423,7 @@ int main(int argc, char** argv){
 				std::string new_ip, new_port;
 				auto buff = wait_for_coordinator_socket->read_full_pckt();
 				auto payload = parse_payload(buff);			
-				if (payload->get_type() != Net::Operation_RedefineServer){
+				if (payload->get_type() != Net::Operation_IpInformation){
 					std::string s = utils::pckt_type_to_name(payload->get_type()); 
 					throw std::runtime_error("Unexpected packet " + s); 
 				}
