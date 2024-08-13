@@ -43,6 +43,7 @@ namespace net{
 			inline std::string& get_username() { return username; }
 			inline uint64_t get_user_id() { return user_id; }
 			inline Net::ChannelType get_channel_type() { return channel_type; }
+			inline std::string& get_their_ip() { return their_ip; }
 
 			
 			void send_checked(const void *buf, const int len);

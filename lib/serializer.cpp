@@ -119,6 +119,27 @@ namespace net{
 
 		return &builder;
 	}
+
+	FlatBufferBuilder* Serializer::build_election(const int valor){
+		builder.Clear();
+
+		auto election = Net::CreateElection(builder, valor);
+		auto packet = Net::CreatePacket(builder, Net::Operation_Election, election.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+	}
+	FlatBufferBuilder* Serializer::build_coordinator(){
+		builder.Clear();
+
+		auto coordinator = Net::CreateCoordinator(builder);
+		auto packet = Net::CreatePacket(builder, Net::Operation_Coordinator, coordinator.Union());
+		builder.FinishSizePrefixed(packet);
+
+		return &builder;
+
+	}
+	FlatBufferBuilder* build_relay_conection(std::string const& ip, std::string const& port);
 }
 
 /*

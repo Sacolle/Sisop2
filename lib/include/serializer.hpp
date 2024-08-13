@@ -28,6 +28,9 @@ namespace net{
 			FlatBufferBuilder* build_delete(std::string const& filename);
 			FlatBufferBuilder* build_redefine_server(std::string const& ip, std::string const& port);
 			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg, std::string *port = nullptr);
+			FlatBufferBuilder* build_election(const int valor);
+			FlatBufferBuilder* build_coordinator();
+			FlatBufferBuilder* build_relay_conection(std::string const& ip, std::string const& port);
 
 		private:
 			FlatBufferBuilder builder;

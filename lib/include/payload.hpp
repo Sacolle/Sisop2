@@ -240,6 +240,40 @@ namespace net{
 		private:
 
 	};
+
+	class Election : public Payload {
+		public:
+			Election(const int my_peso, const int other_peso = 0);
+
+			//builds the pckt and sends
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//reads the username folder and returns a response with the name of the files there
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+			//awaits for the response
+			void await_response(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new Election(my_peso, other_peso); }
+
+			inline bool got_response(){ return response; }
+
+		private:
+			const int my_peso;
+			const int other_peso;
+			bool response = false;
+	};
+
+	class Coordinator : public Payload {
+		public:
+			Coordinator();
+
+			//builds the pckt and sends
+			void send(Serializer& serde, std::shared_ptr<Socket> socket);
+			//reads the username folder and returns a response with the name of the files there
+			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
+
+			inline Payload* clone(){ return new Coordinator(); }
+
+	};
 }
 
 #endif

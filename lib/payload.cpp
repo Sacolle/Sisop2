@@ -458,10 +458,57 @@ namespace net {
 		socket->send_checked(pckt);
 	}
 
-	//does nothing
+	//só manda um ok
 	void RedefineServer::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
+		socket->send_checked(pckt);
 	}
 
+	Election::Election(const int my_peso, const int other_peso):
+		my_peso(my_peso), other_peso(other_peso), Payload(Net::Operation_Election){}
+
+	//builds the pckt and sends
+	void Election::send(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_election(my_peso);
+		socket->send_checked(pckt);
+	}
+	//reads the username folder and returns a response with the name of the files there
+	void Election::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_response(
+			other_peso > my_peso ? Net::Status_Yes : Net::Status_No,
+			std::string(""));
+		socket->send_checked(pckt);
+	}
+	//awaits for the response
+	void Election::await_response(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto buff = socket->read_full_pckt();
+		auto pckt = serde.parse_expect(buff, Net::Operation_Response);
+		auto res = pckt->op_as_Response();
+		if(res->status() == Net::Status_Yes){
+			//se recebeu um sim, n precisa fazer nada, pois por default assume-se q 
+			//a eleição começa sem respostas
+		} else if(res->status() == Net::Status_No){
+			//se recebeu que alguem é maior q o seu valor, seta que houve uma resposta
+			response = true;
+		}else {
+			//TODO: precisa de uma exceção para quando os pacotes são enviados corretamente
+			//mas ocorre um erro mesmo assim
+			throw TransmissionException();
+		}
+	}
+
+	Coordinator::Coordinator():Payload(Net::Operation_Coordinator){}
+
+	//builds the pckt and sends
+	void Coordinator::send(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_coordinator();
+		socket->send_checked(pckt);
+	}
+	//reads the username folder and returns a response with the name of the files there
+	void Coordinator::reply(Serializer& serde, std::shared_ptr<Socket> socket){
+		auto pckt = serde.build_response(Net::Status::Status_Ok, std::string(""));
+		socket->send_checked(pckt);
+	}
 
 }
 

@@ -34,52 +34,22 @@ S1 reply-> C
 
 TODO:
 Client:
- - [ ] Mudar a estrutura para o programa não parar quando a conexão acaba
- - [ ] Criar o schema dos pacotes que serão transmitidos no UDP
- - [ ] Criar a socket UDP no cliente que espera o sinal do coordenador novo
- - [ ] Montar o sistema para, na mensagem do coordenador, começar a conexão com o servidor novo
+ - [X] Mudar a estrutura para o programa não parar quando a conexão acaba
+ - [X] Criar a socket TCP no cliente que espera o sinal do coordenador novo
+ - [X] Montar o sistema para, na mensagem do coordenador, começar a conexão com o servidor novo
 
 Server:
- - [ ] Criar uma fase de boot no servidor, para poder estabelecer a conexão entre as replicações. 
+ - [x] Criar uma fase de boot no servidor, para poder estabelecer a conexão entre as replicações. 
  Usar um arquivo de configuração, ou passar pelo terminal via prompt, ou como args de entrada 
  com um comando de GO ou um timer pra começar
- - [ ] Modificar o schema dos pacotes para poder reconecer de qual usuário ele é transmitido
- - [ ] Adicionar na estrutura controller o relay dos pacotes para os outros servidores
- - [ ] Adicionar as threads necessárias para enviar e receber os pacotes das diferentes replicações
- - [ ] Adicionar um método para setar as sockets ser não bloqueante
- - [ ] Implementar o algoritmo do bully, usando essas conexões e essas threads já alocadas para o relay dos pacotes
+ - [x] Adicionar na estrutura controller o relay dos pacotes para os outros servidores
+ - [x] Adicionar as threads necessárias para enviar e receber os pacotes das diferentes replicações
+ - [x] Adicionar um método para setar as sockets ser não bloqueante
+ - [x] Implementar o algoritmo do bully, usando essas conexões e essas threads já alocadas para o relay dos pacotes
  - [ ] Fazer um relay de um pacote novo -> pacote que faz o relay de quais usuários estão conectados e os seus IPs
- - [ ] Fazer a socket UDP para notificar todos os usuários conectados qual o novo servidor
+ - [ ] Modificar o schema dos pacotes para poder reconecer de qual usuário ele é transmitido
+ - [ ] Notificar os usuários conectados qual o novo servidor
 
-
-
-
-Partição de threads para o bully:
-```cpp
-//thread para falar com os outros 
-ServerSocket socket;
-vector<ClientSocket> other_servers;
-
-vector<Socket> send_servers;
-vector<Socket> recv_servers;
-
-//...
-
-//inicializa as conexões
-//espera todos os servidores se conectares a ele
-
-cin >> a;
-for(auto& s: other_servers){
-	s.connect( /* information */);
-	send_servers.push_back(s.build());
-}
-
-while(send_servers.size() < 3){
-	recv_servers.push_back(socket.accept());
-}
-
-
-```
 Cada servidor pode gerir em uma única thread todas as conexões, 
 mas para isso o recv tem que ser não bloqueante. 
 Segundo esse link: https://www.cs.uic.edu/~ygu1/doc/recv.htm#:~:text=In%20non%2Dblocking%20mode%2C%20recv,expires%2C%20zero%20will%20be%20returned.

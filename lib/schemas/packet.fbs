@@ -12,6 +12,8 @@ union Operation {
 	Delete,
 	Response,
 	RedefineServer, 
+	Election,
+	Coordinator,
 	Ping
 }
  
@@ -70,12 +72,20 @@ table Delete {
 	filename: string;
 }
 
-enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq }
+enum Status: ubyte { Ok, Error, SameFile, FileNotFound, BadFile, OutOfSeq, Yes, No }
 
 table Response {
 	status: Status;
 	msg: string;
-	port: string; 
+	port: string; //NOTE: n precisa, né?
+}
+
+table Election {
+	weight: long;
+}
+
+table Coordinator {
+
 }
  
 root_type Packet;

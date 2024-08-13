@@ -15,9 +15,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <poll.h>
+#include <iterator>
 #include <filesystem>
 
 #define BACKLOG 10
+
+pthread_mutex_t g_replicator_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Connect user's session if the user does not have more than 1 session and the id of the session is unique
 std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, int* id, bool is_command){
@@ -120,11 +124,26 @@ void *server_loop_commands(void *arg){
 	}
 	std::cout << "Starting Command Thread " << session << std::endl; 
 
+	auto& election_manager = net::ElectionManager::getInstance();
+
 	while(1){
 		try{
+			/* Replicação de dados */
 			auto buff = socket->read_full_pckt();
 			auto payload = parse_payload(buff);
 			//std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
+
+			pthread_mutex_lock(&g_replicator_mutex);
+			for(auto s_opt: election_manager.get_send_sockets()){
+				if(!s_opt.has_value()) continue;
+				auto s = s_opt.value();
+				std::shared_ptr<net::Payload> replicated_payload(payload->clone());
+				//se for um q tem arquivo, dar append nas pasta do user no path do arquivo
+				replicated_payload->send(serde, s);
+				replicated_payload->await_response(serde, s);
+			}
+			pthread_mutex_unlock(&g_replicator_mutex);
+			
 			payload->reply(serde, socket);
 			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
 				controller.add_data_packet(username, payload);
@@ -133,10 +152,12 @@ void *server_loop_commands(void *arg){
 	
 			std::cout << controller.remove_session(username, id) << std::endl;
 			std::cout << "Saindo da sessão de comandos de " << session << std::endl;
+			pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 			pthread_exit(0);
 
 		}catch(const net::ReceptionException& e){
 			std::cerr << "Falha ao ler o pacote: " << e.what() << std::endl;
+			pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 			//TODO: await a bit, flush the socket and send a ping to see if its ok
 		}catch(const std::ios_base::failure& e){
 			try {
@@ -146,11 +167,13 @@ void *server_loop_commands(void *arg){
 				
 				controller.remove_session(username, id);
 				std::cout << "Saindo da sessão de comandos de " << session << std::endl;
+				pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 				pthread_exit(0);
 
 			}catch(const std::exception& e){
 				std::cout << "Failed to send error response, quitting sessiong anyways: " << e.what() << '\n';
 				controller.remove_session(username, id);
+				pthread_mutex_unlock(&g_replicator_mutex); // Fecha mutex de replicação
 				pthread_exit(0);
 			}
 		}catch(std::exception& e){
@@ -260,30 +283,307 @@ void *server_loop_data(void *arg) {
 
 
 void* election_socket_setup(void* s){
+	int replicacoes = *((int*) s);
+	std::string ip, porta;
+	int valor;
+	net::Serializer serde;
+
+	auto& election_manager = net::ElectionManager::getInstance();
+
+	//wait for everyone to open the ports
+	sleep(10);
+	try{
+		for(int i = 0; i < replicacoes; i++){
+			std::cin >> ip >> porta >> valor;
+// Possivelmente é melhor ter um coordenador inicial para deixar responsável pelo setup e fazer a sincronização inicial
+				
+			net::ClientSocket socket;
+			socket.connect(ip.c_str(), porta.c_str());
+
+			auto s = socket.build();
+			s->election_weight = valor;
+			
+			//manda essa msg para saber o peso da conexão
+			//importante depois na votação
+			//fazendo desse jeito seco, pq sim
+			auto pckt = serde.build_connect("", Net::ChannelType_MIN, election_manager.valor);
+			s->send_checked(pckt);
+			
+			election_manager.add_send_socket(s);
+		}
+	}catch(const net::NetworkException& e){
+		std::cout << "Setup failed:\n" << e.what() << std::endl;
+		exit(1);
+	}
+	pthread_exit(0);
+
+	return nullptr;
+}
+
+void setup_election(char* election_port, int number_of_replications){
+
+	auto& election_manager = net::ElectionManager::getInstance();
+	net::Serializer serde;
+	net::ServerSocket socket_election_recv;
+
+	try{
+		socket_election_recv.open(election_port, BACKLOG);
+	}catch(const net::NetworkException& e){
+		std::cerr << "Failed to open socket:\n" << e.what() << '\n';
+		exit(1);
+	}
+	
+	//cria a thread para estabelecer as conexões
+	pthread_t election_connect;
+	pthread_create(&election_connect, NULL, election_socket_setup, &number_of_replications);
+
+	//aceita number_of_replications conexões
+	for(int i = 0; i < number_of_replications; i++){
+		auto socket_ptr = socket_election_recv.accept();
+		
+		//NOTE: usando o pacote connect para passar o peso da socket
+		auto buff = socket_ptr->read_full_pckt();
+		auto pckt = serde.parse_expect(buff, Net::Operation_Connect);
+		auto connect = pckt->op_as_Connect();
+		
+		//connect->id() contém o peso da socket
+		socket_ptr->election_weight = connect->id();
+		std::cout << "peso é " << connect->id() << std::endl;
+
+		std::shared_ptr<net::Socket> s(socket_ptr);
+		election_manager.add_recv_socket(s);
+	}
+	//espera se conetar a todas as replicações
+	pthread_join(election_connect, NULL);
+
+	//começa uma eleição
+	election_manager.set_in_election(true);
+}
+
+//does the eleição LOL
+void do_the_election(){
+	net::Serializer serde;
+	auto& election_manager = net::ElectionManager::getInstance();
+
+	std::list<std::shared_ptr<net::Socket>> sockets_to_remove;
+
+	election_manager.set_in_election(true);
+
+	net::Election election(election_manager.valor);
+
+	std::cout << "meu peso é: " << election_manager.valor << std::endl;
+	//std::cout << "loopando pelos sockets" << std::endl;
+
+	for(auto s_opt: election_manager.get_send_sockets()){
+		if(!s_opt.has_value()) continue;
+		auto s = s_opt.value();
+		//std::cout << "socket de peso: " << s->election_weight <<std::endl;
+		if(s->election_weight > election_manager.valor){
+			//std::cout << "sending election to peso: " << s->election_weight <<std::endl;
+			try{
+				election.send(serde, s);
+				//std::cout << "esperando resposta" << std::endl;
+				election.await_response(serde, s);
+			}catch(...){
+				//std::cout << "removendo socket de ip: " << s->get_their_ip() << std::endl;
+				sockets_to_remove.push_back(s);
+			}
+		}
+	}
+	//remove as sockets que foram desconectadas
+	for(auto s: sockets_to_remove){
+		election_manager.remove_send_socket(s);
+	}
+	sockets_to_remove.clear();
 
 
+	if(!election.got_response()){
+		//esse cara aqui eh o coordenador
+		//NOTE: espera todos os election serem mandados e lidos e tal
+		sleep(2);
+		net::Coordinator coordinator;
+		for(auto s_opt: election_manager.get_send_sockets()){
+			if(!s_opt.has_value()) continue;
+			auto s = s_opt.value();
+			try{
+				coordinator.send(serde, s);
+				coordinator.await_response(serde, s);
+			}catch(...){
+				std::cout << "removendo socket de ip: " << s->get_their_ip() << std::endl;
+				sockets_to_remove.push_back(s);
+			}
+		}
+		//TODO: faz aqui as alterações no election_manager
+		election_manager.set_is_coordinator(true);
+		std::cout << "eu sou o coordenador" << std::endl;
+		//TODO: mandar para os clientes na lista
+		election_manager.set_in_election(false);
+	}
+
+	//remove as sockets que removem erro
+	for(auto s: sockets_to_remove){
+		election_manager.remove_send_socket(s);
+	}
+	sockets_to_remove.clear();
+
+	while(election_manager.in_election());
+	election_manager.remove_staged_send_socket();	
+}
+
+std::shared_ptr<net::Payload> parse_election_payload(uint8_t* buff){
+	auto msg = Net::GetSizePrefixedPacket(buff);
+
+	switch (msg->op_type()){
+	case Net::Operation_Coordinator: {
+		return std::make_shared<net::Coordinator>();
+	} break;
+	case Net::Operation_Election: {
+		auto payload = msg->op_as_Election();
+		return std::make_shared<net::Election>(
+			net::ElectionManager::getInstance().valor,
+			payload->weight()
+		);
+	} break;
+	case Net::Operation_Response:
+		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ")
+			.append(utils::pckt_type_to_name(msg->op_type())));
+		break;
+	default:
+		throw net::ReceptionException("Didn't match any operation known\n");
+	}
+}
+
+
+void* election_observer(void* args){
+	auto& election_manager = net::ElectionManager::getInstance();
+	net::Serializer serde;
+
+	auto& recv_sockets = election_manager.get_recv_sockets();
+
+	#define MAX_CONNECTIONS 5
+	struct pollfd poll_fds[MAX_CONNECTIONS];
+
+	int count = 0;
+	for(auto s_opt: recv_sockets){
+		if(!s_opt.has_value()) continue;
+		auto s = s_opt.value();
+
+		poll_fds[count].fd = s->get_fd();
+		poll_fds[count].events = POLLIN | POLLPRI;
+		count++;
+	}
+	std::list<std::shared_ptr<net::Socket>> sockets_to_remove;
+
+	while(1){
+		int poll_num = poll(poll_fds, count, -1);
+
+		if (poll_num == -1) {
+			if (errno == EINTR)
+				continue;
+			perror("poll");
+			exit(EXIT_FAILURE);
+		}
+		if (poll_num > 0) {
+			for(int i = 0; i < count; i++){
+				if(poll_fds[i].revents & POLLIN){
+
+					auto opt_s = recv_sockets[i];
+					if(!opt_s.has_value()) continue;
+					auto s = opt_s.value();
+					try{
+						auto pckt = s->read_full_pckt();
+						//NOTE: talvez dê problemas de receber election depois de receber coordinator
+						auto payload = parse_election_payload(pckt);
+						payload->reply(serde, s);
+						if (payload->get_type() == Net::Operation_Coordinator){
+							//se recebeu uma msg coordinator, seta a socket como a coordinator socket
+							//e remove ele da lista de election
+							election_manager.set_coordinator_socket(s);
+							election_manager.stage_send_socket_to_remove(s);
+							sockets_to_remove.push_back(s);
+							std::cout << "Não sou o coordenador" << std::endl;
+							election_manager.set_in_election(false);
+							break;
+						}else{
+							election_manager.set_in_election(true);
+						}
+					}catch(...){
+						sockets_to_remove.push_back(s);
+					}
+				}
+			}
+		}
+		bool changed_socket_list = false;
+		for(auto s: sockets_to_remove){
+			election_manager.remove_recv_socket(s);
+			changed_socket_list = true;
+		}
+		sockets_to_remove.clear();
+		
+		//se removeu uma socket da lista tem q resetar a lista do poll
+		if(changed_socket_list){
+			for(auto s: recv_sockets){
+				if(!s.has_value()){
+					poll_fds[count].fd = -1;
+					poll_fds[count].events = POLLHUP;
+				}
+			}
+		}
+	}
+}
+
+std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
+	auto msg = Net::GetSizePrefixedPacket(buff);
+
+	switch (msg->op_type()){
+	case Net::Operation_Delete: {
+		auto payload = msg->op_as_Delete();
+		return std::make_shared<net::Delete>(
+			payload->filename()->c_str()
+		);
+	} break;
+	case Net::Operation_FileMeta: {
+		auto payload = msg->op_as_FileMeta();
+		auto upload = std::make_shared<net::Upload>(
+			payload->name()->c_str(),
+			payload->size()
+		);
+		return upload;
+	} break;
+	case Net::Operation_Response:
+		throw net::ReceptionException(std::string("Unexpected packet at Payload::parse_from_buffer ")
+			.append(utils::pckt_type_to_name(msg->op_type())));
+		break;
+	default:
+		//didn't match any operation known
+		throw net::ReceptionException("Didn't match any operation known\n");
+	}
 }
 
 int main(int argc, char** argv) {
 	//meu valor numero de replicações
 	//ip - porta - valor
-	if(argc < 3){
+	if(argc < 6){
 		std::cout << "numero insuficiente de argumentos" << std::endl;
 		exit(1);
 	}
 	int election_value = std::stoi(argv[1]);
 	int number_of_replications = std::stoi(argv[2]);
 
+	char* cmd_port = argv[3];
+	char* data_port = argv[4];
+	char* election_port = argv[5];
+
 	//primeira vez q chama get instance, precisa passar o valor de eleição
-	{ net::ElectionManager::getInstance(election_value); }
-	
+	auto& election_manager = net::ElectionManager::getInstance(election_value); 
+	net::Serializer serde;
 
 	net::ServerSocket socket_command_listen_server(true);
 	net::ServerSocket socket_data_listen_server(true);
 	
 	// Conecta a socket de comandos
 	try{
-		socket_command_listen_server.open(PORT_COMMAND, BACKLOG);
+		socket_command_listen_server.open(cmd_port, BACKLOG);
 	}
 	catch(const net::NetworkException& e){
 		std::cerr << e.what() << '\n';
@@ -291,44 +591,71 @@ int main(int argc, char** argv) {
 	}
 	// Conecta a socket de dados
 	try{
-		socket_data_listen_server.open(PORT_DATA, BACKLOG);
+		socket_data_listen_server.open(data_port, BACKLOG);
 	}
 	catch(const net::NetworkException& e){
 		std::cerr << e.what() << '\n';
 		exit(1);
 	}
 
-	net::ServerSocket socket_election_recv;
-	try{
-		socket_election_recv.open(PORT_ELECTION, BACKLOG);
-	}catch(const net::NetworkException& e){
-		std::cerr << e.what() << '\n';
-		exit(1);
-	}
-
-	//fazer as threads
-
+	setup_election(election_port, number_of_replications);
+	pthread_t election_observer_handler;
+	pthread_create(&election_observer_handler, NULL, election_observer, NULL);
+	std::cout << "iniciou a eleição" << std::endl;
+	do_the_election();
+	
 	while(1){
-		try {
-			auto s_commands = socket_command_listen_server.accept();
-			auto s_data = socket_data_listen_server.accept();
-			// Cria nova thread e começa o server loop nela 
-			// A thread atual se mantém a espera de conexão 
-			if (s_commands != nullptr){
-				s_commands->print_address();
-				pthread_t t_commands;
-				pthread_create(&t_commands, NULL, server_loop_commands, s_commands);
+		if(!election_manager.is_coordinator()){
+			while(1){
+				std::cout << "recebendo pacotes do main" << std::endl;
+				if(election_manager.in_election()) break;
+				try{
+					auto coord_socket = election_manager.get_coordinator_socket();
+					auto pckt = coord_socket->read_full_pckt();
+					auto payload = parse_server_replication(pckt);
+					payload->reply(serde, coord_socket);
+				}catch(const net::CloseConnectionException& e){
+					std::cout << "Coordenador desconectou" << std::endl;
+					break;
+				}catch(const std::exception& e){
+					std::cout << "Erro na replicação:\n" << e.what() << std::endl;
+				}
 			}
-			if (s_data != nullptr){
-				s_data->print_address();
-				pthread_t t_data;
-				pthread_create(&t_data, NULL, server_loop_data, s_data);
+			do_the_election();
+
+		}else{
+			std::cout << "recebendo conexões" << std::endl;
+			/* Se chegar a esse ponto, significa que o RM é o coordenador */
+			while(1){
+				try {
+					auto s_commands = socket_command_listen_server.accept();
+					auto s_data = socket_data_listen_server.accept();
+					// Cria nova thread e começa o server loop nela 
+					// A thread atual se mantém a espera de conexão 
+					//TODO: mandar para as replicações os IDs dos clientes
+					if (s_commands != nullptr){
+						//mutex
+						//for send_socket -> envia o ip e porta do kr
+						//guardar info no election_manager (com mutex)
+						//cria a pasta com o payload
+						//mutex
+
+						s_commands->print_address();
+						pthread_t t_commands;
+						pthread_create(&t_commands, NULL, server_loop_commands, s_commands);
+					}
+					if (s_data != nullptr){
+						s_data->print_address();
+						pthread_t t_data;
+						pthread_create(&t_data, NULL, server_loop_data, s_data);
+					}
+					if (s_commands == nullptr && s_data == nullptr){
+						// TODO busy wait
+					}
+				}catch(const net::NetworkException& e){
+					std::cerr << "erro em aceitar clientes:\n" << e.what() << '\n';
+				}
 			}
-			if (s_commands == nullptr && s_data == nullptr){
-				// TODO busy wait
-			}
-		}catch(const net::NetworkException& e){
-			std::cerr << e.what() << '\n';
 		}
 	}
 	return 0;

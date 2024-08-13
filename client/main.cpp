@@ -26,10 +26,11 @@
 
 pthread_mutex_t mutex_close_threads = PTHREAD_MUTEX_INITIALIZER;
 bool close_threads = false;
-std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(std::string ip, std::string port, int id, std::string username);
+std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(
+	const std::string& ip, const std::string& port, int id, const std::string& username, net::Serializer& serde);
+
 net::ServerSocket wait_for_coordinator_socket_listen(true);
 int client_loop_commands(	std::shared_ptr<net::Socket> socket,
-							net::Serializer &serde,
 							const std::string& username,
 							int id);
 void *client_loop_data(void *arg);
@@ -215,7 +216,8 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 	}
 }
 
-std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(std::string ip, std::string port, int id, std::string username, net::Serializer& serde){
+std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(
+	const std::string& ip, const std::string& port, int id, const std::string& username, net::Serializer& serde){
 	
 	/* Conexão com o socket de comandos */
 	net::ClientSocket base_socket_commands;
@@ -268,11 +270,12 @@ std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_cl
 
 }
 
-int client_loop_commands(	std::shared_ptr<net::Socket> socket,
-							net::Serializer &serde,
+int client_loop_commands(std::shared_ptr<net::Socket> socket,
 							const std::string& username,
 							int id) {
 	std::string userfolder = utils::get_sync_dir_path(username); 
+
+	net::Serializer serde;
 
 	/* Create the file descriptor for accessing the inotify API. */
 	int inotify_fd = inotify_init1(IN_NONBLOCK);
@@ -341,6 +344,7 @@ int client_loop_commands(	std::shared_ptr<net::Socket> socket,
 	/* Close inotify file descriptor. */
 	close(inotify_fd);
 	close(watch_folder_fd);
+	return 0;
 }
 
 void *client_loop_data(void *arg) {
@@ -393,14 +397,14 @@ int main(int argc, char** argv){
 		pthread_t t_data;
 		int data_error = pthread_create(&t_data, NULL, client_loop_data, socket_data.get());
 		/* Loop de espera de comandos */
-		int commands_error = client_loop_commands(socket_commands, serde, username, id);
+		int commands_error = client_loop_commands(socket_commands, username, id);
 
 		/* Caso ambas as threads retornem que houve uma exceção de fim de conexão */
 		if (data_error == -1 && commands_error == -1) {
 			/* Conexão acabou -> Criar socket para aguardar conexão do novo coordenador -> Aguardar mensagem do novo coordenador -> Criar novas conexões */
 
 			/* Criação de socket para receber a mensagem do novo coordenador */
-			net::ServerSocket wait_for_coordinator_socket_listen(true); // talvez precise ser false = permitir <exit>
+			net::ServerSocket wait_for_coordinator_socket_listen; 
 			// Abre a socket que aguardará mensagem do novo coordenador
 			try{
 				wait_for_coordinator_socket_listen.open(PORT_CHANGE_COORDINATOR, BACKLOG);
@@ -411,7 +415,7 @@ int main(int argc, char** argv){
 			}
 			/* Espera a conexão com o novo coordenador */
 			try {
-				std::shared_ptr<net::Socket> wait_for_coordinator_socket((net::Socket *) wait_for_coordinator_socket_listen.accept());
+				std::shared_ptr<net::Socket> wait_for_coordinator_socket(wait_for_coordinator_socket_listen.accept());
 				/* Recebe a mensagem com o novo ip a se conectar e atualiza a informação de qual é o ip do server */
 				std::string new_ip, new_port;
 				auto buff = wait_for_coordinator_socket->read_full_pckt();
