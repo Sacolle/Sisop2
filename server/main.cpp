@@ -172,10 +172,29 @@ void *server_loop_commands(void *arg){
 			auto payload = parse_payload(buff);
 			//std::cout << "Recebido pacote: " << utils::pckt_type_to_name(payload->get_type()) << std::endl;
 			
-			payload->reply(serde, socket);
-			if (payload->get_type() == Net::Operation_FileMeta || payload->get_type() == Net::Operation_Delete){
-				controller.add_data_packet(username, payload);
+			if (payload->get_type() == Net::Operation_FileMeta){
+				std::shared_ptr<net::Upload> upload = std::dynamic_pointer_cast<net::Upload>(payload); 
+
+				//excuta o efeito do payload
+				auto res = upload->recv_and_save_file(serde, socket);
+				//manda para as replicas
 				send_packet_to_replicas(serde, payload); 
+				//depois manda um ok para o cliente
+				upload->send_response(serde, socket, Net::Status_Ok, res);
+				controller.add_data_packet(username, payload);
+
+			}else if (payload->get_type() == Net::Operation_Delete){
+				std::shared_ptr<net::Delete> del = std::dynamic_pointer_cast<net::Delete>(payload); 
+
+				//excuta o efeito do payload
+				auto res = del->delete_file();
+				//manda para as replicas
+				send_packet_to_replicas(serde, payload); 
+				//depois manda um ok para o cliente
+				del->send_response(serde, socket, Net::Status_Ok, res);
+				controller.add_data_packet(username, payload);
+			}else{
+				payload->reply(serde, socket);
 			}
 		}catch(const net::CloseConnectionException& e){
 			std::cout << controller.remove_session(username, id) << std::endl;

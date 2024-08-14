@@ -82,6 +82,10 @@ namespace net{
 			//awaits for ok or err pkct
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
+			std::string recv_and_save_file(Serializer& serde, std::shared_ptr<Socket> socket);
+			void send_response(Serializer& serde, std::shared_ptr<Socket> socket, 
+				Net::Status status, const std::string& msg);
+
 			inline Payload* clone(){ return new Upload(filename.c_str(), size, username.c_str()); }
 
 			bool is_server = false; 	
@@ -222,8 +226,13 @@ namespace net{
 			//awaits for the response
 			//void await_response(Serializer& serde, std::shared_ptr<Socket> socket) override;
 
+			//funções
+			std::string delete_file();
+			void send_response(Serializer& serde, std::shared_ptr<Socket> socket, 
+				Net::Status status, const std::string& msg);
+
 			inline Payload* clone(){ return new Delete(filename.c_str(), username.c_str()); }
-		private:
+
 			const std::string filename;	
 			const std::string username; 
 	};

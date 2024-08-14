@@ -126,6 +126,11 @@ namespace net {
 	//receives the packets and writes to file
 	void Upload::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		
+		auto msg = recv_and_save_file(serde, socket);
+		send_response(serde, socket, Net::Status_Ok, msg);
+	}
+
+	std::string Upload::recv_and_save_file(Serializer& serde, std::shared_ptr<Socket> socket){
 		file.open_recv(utils::filename_without_path(filename), utils::get_sync_dir_path(username));
 
 		//already received the filemeta and builded this upload obj, having the corret size
@@ -146,8 +151,12 @@ namespace net {
 		//read the file, send an ok
 		file.finish_and_rename();
 
-		std::string msg("Arquivo recebido corretamente");
-		auto response = serde.build_response(Net::Status_Ok, msg);
+		return std::string("Arquivo recebido corretamente");
+	}
+	void Upload::send_response(Serializer& serde, std::shared_ptr<Socket> socket, 
+		Net::Status status, const std::string& msg){
+			
+		auto response = serde.build_response(status, msg);
 		socket->send_checked(response); //if fails, bubble up
 	}
 
@@ -413,21 +422,30 @@ namespace net {
 	//does the operation, returns response depending on the result
 	void Delete::reply(Serializer& serde, std::shared_ptr<Socket> socket){
 		try{
-			//TODO: close stuff
-			std::string file_to_remove(utils::get_sync_dir_path(username));
-			file_to_remove += "/";
-			file_to_remove += filename;
-			remove(file_to_remove.c_str());
-
-			std::string msg(filename);
-			msg += " deletado.";
-			auto pckt = serde.build_response(Net::Status_Ok, msg);
-			socket->send_checked(pckt); //se falha em enviar aqui, não catch
+			auto msg = delete_file();
+			//aqui
+			send_response(serde, socket, Net::Status_Ok, msg);
 		}
 		catch(const std::ios_base::failure& e){ //exception caso falhe em abrir arquivo
-			auto pckt = serde.build_response(Net::Status_Error, e.what());
-			socket->send_checked(pckt);
+			send_response(serde, socket, Net::Status_Error, e.what());
 		}
+	}
+
+	std::string Delete::delete_file(){
+		std::string file_to_remove(utils::get_sync_dir_path(username));
+		file_to_remove += "/";
+		file_to_remove += filename;
+		remove(file_to_remove.c_str());
+
+		std::string msg(filename);
+		msg += " deletado.";
+		return msg;
+	}
+	void Delete::send_response(Serializer& serde, std::shared_ptr<Socket> socket, 
+		Net::Status status, const std::string& msg){
+
+		auto pckt = serde.build_response(status, msg);
+		socket->send_checked(pckt); //se falha em enviar aqui, não catch
 	}
 
 	// --- ping ---
