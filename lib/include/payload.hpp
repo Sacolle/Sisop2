@@ -144,7 +144,8 @@ namespace net{
 	class Connect : public Payload {
 		public:
 			//gatters the info
-			Connect(const char* username, uint64_t id, const char* data_port = "");
+			Connect(const char* username, uint64_t id, 
+				const char* data_port = "", const std::string& coordinator_port = "");
 			//username(username), Payload(Net::Operation_Connect){}
 
 			//builds the pckt and sends
@@ -161,6 +162,7 @@ namespace net{
 			bool valid_connection = true;
 			bool command_connection = false; 
 			std::string data_port;
+			std::string coordinator_port;
 	};
 
 	class Ping : public Payload {

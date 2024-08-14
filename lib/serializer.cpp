@@ -72,10 +72,12 @@ namespace net{
 
 		return &builder;
 	}
-	FlatBufferBuilder* Serializer::build_connect(std::string const& username, uint64_t id){
+	FlatBufferBuilder* Serializer::build_connect(std::string const& username, uint64_t id,const std::string& coordinator_port){
 		builder.Clear();
 
-		auto connect = Net::CreateConnect(builder, id, builder.CreateString(username));
+		auto connect = Net::CreateConnect(builder, 
+			id, builder.CreateString(username), builder.CreateString(coordinator_port)
+		);
 		auto packet = Net::CreatePacket(builder, Net::Operation_Connect, connect.Union());
 		builder.FinishSizePrefixed(packet);
 

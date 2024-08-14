@@ -27,6 +27,7 @@ table Ping {}
 table Connect {
 	id: ulong;
 	username: string;
+	coordinator_port: string;
 	//TODO: add type: 
 	// - main -> for client cmd req to server reply
 	// - side -> for client file watch req to server reply

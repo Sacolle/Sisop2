@@ -119,11 +119,19 @@ std::shared_ptr<net::Payload> parse_payload(uint8_t* buff){
 	}
 }
 
-std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socket> socket, const char* username, int id){
+std::string initial_handshake(
+	net::Serializer& serde, 
+	std::shared_ptr<net::Socket> socket, 
+	const char* username, 
+	int id, 
+	const std::string& coordinator_port
+	){
 	//TODO: read the connect info from args[]
 	net::Connect connect(
 		username, 
-		id
+		id,
+		"",
+		coordinator_port
 	);
 	connect.send(serde, socket);
 	connect.await_response(serde, socket);
@@ -218,7 +226,8 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 }
 
 std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_client(
-	const std::string& ip, const std::string& port, int id, const std::string& username, net::Serializer& serde){
+	const std::string& ip, const std::string& port, const std::string& coordinator_port,
+	int id, const std::string& username, net::Serializer& serde){
 	
 	/* Conexão com o socket de comandos */
 	net::ClientSocket base_socket_commands;
@@ -232,14 +241,12 @@ std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_cl
 	}
 
 	auto socket_commands = base_socket_commands.build();
-
-
 	
 	std::string server_port_data;
 
 	// Command handshake
 	try {
-		server_port_data = initial_handshake(serde, socket_commands, username.c_str(), id);
+		server_port_data = initial_handshake(serde, socket_commands, username.c_str(), id, coordinator_port);
 	} catch (net::InvalidConnectionException& e){
 		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
 		exit(1);
@@ -262,7 +269,7 @@ std::pair<std::shared_ptr<net::Socket>, std::shared_ptr<net::Socket>> connect_cl
 
 	/* Data handshake */
 	try {
-		initial_handshake(serde, socket_data, username.c_str(), id);
+		initial_handshake(serde, socket_data, username.c_str(), id, coordinator_port);
 	} catch (net::InvalidConnectionException e){
 		std::cout << "Failed to initialize connection: " <<  e.what() << std::endl;
 		exit(1);
@@ -396,6 +403,7 @@ int main(int argc, char** argv){
 	int id = utils::random_number();
 	std::string ip(argv[2]); 
 	std::string port(argv[3]); 
+	std::string coordinator_port(argv[4]); 
 	std::string username(argv[1]);
 	username_global = username; 
 	std::string userfolder = utils::get_sync_dir_path(username);
@@ -409,7 +417,7 @@ int main(int argc, char** argv){
 	net::ServerSocket wait_for_coordinator_socket_listen; 
 	// Abre a socket que aguardará mensagem do novo coordenador
 	try{
-		wait_for_coordinator_socket_listen.open(PORT_CHANGE_COORDINATOR, BACKLOG);
+		wait_for_coordinator_socket_listen.open(coordinator_port.c_str(), BACKLOG);
 	}
 	catch(const net::NetworkException& e){
 		std::cerr << e.what() << '\n';
@@ -420,7 +428,7 @@ int main(int argc, char** argv){
 	/* Faz o loop de operação, caso servidor falhe, reinicia conexão com réplica */
 	while(1) {
 		std::cout << "Connecting to server: " << ip << ":" << port << std::endl; 
-		auto sockets = connect_client(ip, port, id, username, serde);
+		auto sockets = connect_client(ip, port, coordinator_port, id, username, serde);
 		auto socket_data = sockets.first;
 		auto socket_commands = sockets.second;
 		/* Início da thread para leitura de dados */

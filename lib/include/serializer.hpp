@@ -23,7 +23,7 @@ namespace net{
 			FlatBufferBuilder* build_filemeta(std::string const& filename, std::string const& username, uint64_t size);
 			FlatBufferBuilder* build_sendfilerequest(std::string const& filename, uint64_t hash);
 			FlatBufferBuilder* build_filedata(uint8_t* buff, int size);
-			FlatBufferBuilder* build_connect(std::string const& username, uint64_t id);
+			FlatBufferBuilder* build_connect(std::string const& username, uint64_t id, const std::string& coordinator_port = "");
 			FlatBufferBuilder* build_download(std::string const& filename);
 			FlatBufferBuilder* build_delete(std::string const& filename, std::string const& username);
 			FlatBufferBuilder* build_ip_information(std::string const& port, std::string const& ip = "", bool isConnected = true);

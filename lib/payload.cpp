@@ -285,15 +285,17 @@ namespace net {
 	}
 	//awaits for ok or err pkct
 	//gatters the info
-	Connect::Connect(const char* username, uint64_t id, const char* data_port): 
+	Connect::Connect(const char* username, uint64_t id, 
+		const char* data_port, const std::string& coordinator_port): 
 		username(username), 
 		data_port(data_port),
+		coordinator_port(coordinator_port),
 		id(id), 
 		Payload(Net::Operation_Connect){}
 
 	//builds the pckt and sends
 	void Connect::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_connect(username, id);
+		auto pckt = serde.build_connect(username, id, coordinator_port);
 		socket->send_checked(pckt);
 
 		socket->set_connection_info(username, id);

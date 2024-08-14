@@ -60,7 +60,8 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	net::Connect connect(
 		connect_raw->username()->c_str(), 
 		connect_raw->id(),
-		election_manager.data_port.c_str()
+		election_manager.data_port.c_str(),
+		connect_raw->coordinator_port()->str()
 	);
 	*id = connect_raw->id(); 
 	connect.command_connection = is_command;
@@ -74,7 +75,11 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	}
 	connect.reply(serde, socket);
 
-	std::shared_ptr<net::Payload>  payload_client_info = std::make_shared<net::ClientInfo>(socket->get_their_ip(), PORT_CHANGE_COORDINATOR, true);
+	std::shared_ptr<net::Payload> payload_client_info = std::make_shared<net::ClientInfo>(
+		socket->get_their_ip(),
+		connect_raw->coordinator_port()->str(),
+		true
+	);
 	send_packet_to_replicas(serde, payload_client_info); 
 
 	return connect.username;
@@ -431,7 +436,6 @@ void do_the_election(){
 		}
 		//TODO: faz aqui as alterações no election_manager
 		election_manager.set_is_coordinator(true);
-		election_manager.set_in_election(false);
 		std::cout << "eu sou o coordenador" << std::endl;
 		std::list<std::shared_ptr<net::ClientInfo>> clients_to_remove; 
 		for(auto& client_info: election_manager.get_clients_info()){
@@ -456,6 +460,8 @@ void do_the_election(){
 		for (auto& client_info : clients_to_remove){
 			election_manager.remove_client_info(client_info); 
 		}		
+
+		election_manager.set_in_election(false);
 	}
 	//remove as sockets que removem erro
 	for(auto s: sockets_to_remove){
