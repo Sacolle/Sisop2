@@ -628,7 +628,22 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 }
 
 int main(int argc, char** argv) {
-	// ./server <election_value> <number_of_replications> <cmd_port> <data_port> <election_port> 
+
+	/* Na chamada do ./server, os seguintes argumentos são necessários */
+	/* election_value -> valor de id para eleição, deve concordar com o valor nos arquivos txt de setup */
+	/* number_of_replications -> número de replicações, sem contar a chamada atual de ./server */
+	/* cmd_port -> porta arbitrária; vai ser usada como argumento <port_comandos> (3º argumento) do cliente */
+	/* data_port -> porta arbitrária */
+	/* election_port -> porta de eleição, deve concordar com o valor nos arquivos txt de setup */
+
+	/* Além dos argumentos, deve se passar via pipe um arquivo txt contendo as seguintes informações, */
+	/* Para cada replicação, além da chamada atual, uma linha com o seguinte formato: */
+	/* <ip_replica> <porta_replica> <value_replica> */
+	/* onde, */
+	/* ip_replica -> ip da máquina onde está localizada a réplica */
+	/* porta_replica -> porta de eleição da replica, referente a election_port na chamada de ./server da réplica */
+	/* value_replica -> valor de id para eleição, referente a election_value na chamada de ./server da réplica */
+
 	if(argc < 6){
 		std::cout << "numero insuficiente de argumentos" << std::endl;
 		exit(1);

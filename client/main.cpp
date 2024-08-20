@@ -394,9 +394,16 @@ void *client_loop_data(void *arg) {
 
 
 int main(int argc, char** argv){
+
+	/* Na chamada do ./client, os seguintes argumentos são necessários */
+	/* username -> arbitrario */
+	/* server_ip_address -> endereço de IP da máquina que contém o servidor coordenador */
+	/* port_comandos -> porta que define a socket de comandos do server, dada como <cmd_port> (3º argumento) do servidor */
+	/* port_data -> porta arbitrária */
+
 	if(argc < 4){
 		std::cerr << "argumentos insuficientes para começar o servidor" << '\n';
-		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port>" << std::endl;
+		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port_comandos> <port_data>" << std::endl;
 		exit(2);
 	}
 
