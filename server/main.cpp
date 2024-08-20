@@ -71,9 +71,12 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	if (!controller.add_session(connect.username, connect.id)){
 		connect.valid_connection = false; 
 		connect.reply(serde, socket);
-		std::cout << "Login for user " << connect.username << " and id "  << connect.id << " failed" << std::endl; 
+		// std::cout << "Login for user " << connect.username << " and id "  << connect.id << " failed" << std::endl;
+		throw std::runtime_error("Login for user " + connect.username + " and id "  + std::to_string(connect.id) + " failed");
 	}
-	connect.reply(serde, socket);
+	else {
+		connect.reply(serde, socket);
+	}
 
 	std::shared_ptr<net::Payload> payload_client_info = std::make_shared<net::ClientInfo>(
 		socket->get_their_ip(),
@@ -151,6 +154,7 @@ void *server_loop_commands(void *arg){
 		username = initial_handshake(serde, socket, &id,  true);
 	}catch(std::exception& e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
+		pthread_exit(NULL);
 	}
 
 	utils::test_and_set_folder(username); 
@@ -159,6 +163,7 @@ void *server_loop_commands(void *arg){
 
 	auto& controller = net::Controller::getInstance();
 	/* Waits for files to be synched at start */
+	/* Gera erro caso conexão indevida chegue a esse ponto */
 	while(!controller.is_files_synched(username, id)) {
 		sleep(1); 
 	}
@@ -253,7 +258,8 @@ void *server_loop_data(void *arg) {
 	try{
 		username = initial_handshake(serde, socket, &id, false);
 	}catch(std::exception e){
-		std::cout << "Failed to initialize connection: " << e.what() << std::endl; 
+		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
+		pthread_exit(NULL);
 	}
 
 	utils::test_and_set_folder(username);
