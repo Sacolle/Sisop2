@@ -78,6 +78,7 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 	std::shared_ptr<net::Payload> payload_client_info = std::make_shared<net::ClientInfo>(
 		socket->get_their_ip(),
 		connect_raw->coordinator_port()->str(),
+		connect.username,
 		true
 	);
 	send_packet_to_replicas(serde, payload_client_info); 
@@ -181,7 +182,10 @@ void *server_loop_commands(void *arg){
 				send_packet_to_replicas(serde, payload); 
 				//depois manda um ok para o cliente
 				upload->send_response(serde, socket, Net::Status_Ok, res);
-				controller.add_data_packet(username, payload);
+
+				//FIXME: ver se o clone aqui resolve o problema de upload
+				std::shared_ptr<net::Payload> cloned_payload(payload->clone());
+				controller.add_data_packet(username, cloned_payload);
 
 			}else if (payload->get_type() == Net::Operation_Delete){
 				std::shared_ptr<net::Delete> del = std::dynamic_pointer_cast<net::Delete>(payload); 
@@ -600,7 +604,7 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 	case Net::Operation_IpInformation: {
 		auto payload = msg->op_as_IpInformation();
 		return std::make_shared<net::ClientInfo>(
-			payload->ip()->c_str(), payload->port()->c_str(), payload->isConnected()
+			payload->ip()->c_str(), payload->port()->c_str(), payload->username()->str(), payload->isConnected()
 		);
 	} break; 
 	case Net::Operation_Delete: {
@@ -697,6 +701,8 @@ int main(int argc, char** argv) {
 					if (payload->get_type() == Net::Operation_IpInformation) {
 						std::shared_ptr<net::ClientInfo> clientInfo = std::dynamic_pointer_cast<net::ClientInfo>(payload); 
 						if (clientInfo->isConnected){
+							std::cout << "connections from session: " << clientInfo->username << std::endl;
+							utils::test_and_set_folder(clientInfo->username);
 							election_manager.add_client_info(clientInfo); 
 						} else {
 							election_manager.remove_client_info(clientInfo); 

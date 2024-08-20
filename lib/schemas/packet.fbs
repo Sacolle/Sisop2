@@ -42,6 +42,7 @@ table SendFileRequest {
 table IpInformation {
 	port: string (required);
 	ip: string;
+	username: string;
 	isConnected: bool = true; 
 }
 

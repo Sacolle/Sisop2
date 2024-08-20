@@ -39,41 +39,8 @@ namespace utils {
 		const size_t pos = pos_of_dot == std::string::npos ? 0 : pos_of_dot;
 		return s.substr(pos, s.size() - pos);
 	}
-	inline bool is_tmp_file(const std::string &s){
-		const size_t pos = s.find_last_of('.');
-		//não tem extensão, não retorna
-		if(pos == std::string::npos){
-			return true;
-		}
 
-		const auto ext = s.substr(pos, s.size() - pos);
-
-		/* Após análise das funções de POSIX referentes a nomeação de arquivos temporários (tmpnam, tmpfile, mkstemp e tempnam), */
-		/* tmpnam -> gera arquivo com prefixo 'file', seguido de sequência alfanumérica */
-		/* tmpfile, mkstemp, tempnam -> gera arquivo com prefixo definido pelo usuário, seguido de sequência alfanumérica */
-		/* Portanto, tratar prefixação de arquivos temporários é o método ideal. */
-
-		if (s.size() > 0) {
-			const char firstChar = s.at(0);
-			/* Se arquivo começa com um '.', '#', "~", é considerado arquivo temporário */
-			if ((firstChar == '.') || (firstChar == '#') || (firstChar == '~')) {
-				return true;
-			}
-		}
-
-		/* Se a extensão do arquivo tem 4+ ou 0 caracteres, é considerado arquivo temporário */
-		if ((ext.size() > 4) || (ext.size() == 0)) {
-			return true;
-		}
-
-		static const std::vector<std::string> TEMPORARY_FILE_EXTENSIONS{".tmp", ".TMP", ".swp", ".swx"}; 
-
-		for(const auto& tmp: TEMPORARY_FILE_EXTENSIONS){
-			if(ext == tmp) return true;
-		}
-		return false;
-	}
-
+	bool is_tmp_file(const std::string &s);
 
 	std::string generate_random_alphanumeric_string(std::size_t len);
 	const char* pckt_type_to_name(Net::Operation op);
