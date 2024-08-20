@@ -72,6 +72,7 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 		connect.valid_connection = false; 
 		connect.reply(serde, socket);
 		std::cout << "Login for user " << connect.username << " and id "  << connect.id << " failed" << std::endl; 
+		throw std::runtime_error("Numero máximo de conexões estabelecido");
 	}
 	connect.reply(serde, socket);
 
@@ -151,6 +152,7 @@ void *server_loop_commands(void *arg){
 		username = initial_handshake(serde, socket, &id,  true);
 	}catch(std::exception& e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
+		pthread_exit(0);
 	}
 
 	utils::test_and_set_folder(username); 
@@ -254,6 +256,7 @@ void *server_loop_data(void *arg) {
 		username = initial_handshake(serde, socket, &id, false);
 	}catch(std::exception e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl; 
+		pthread_exit(0);
 	}
 
 	utils::test_and_set_folder(username);
@@ -755,4 +758,3 @@ int main(int argc, char** argv) {
 	}
 	return 0;
 }
-
