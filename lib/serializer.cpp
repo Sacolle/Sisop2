@@ -102,9 +102,13 @@ namespace net{
 		return &builder;
 	}
 
-		FlatBufferBuilder* Serializer::build_ip_information(std::string const& port, std::string const& ip, bool isConnected){
+		FlatBufferBuilder* Serializer::build_ip_information(std::string const& port, std::string const& ip, std::string const& username, bool isConnected){
 		builder.Clear();
-		auto ip_information = Net::CreateIpInformation(builder, builder.CreateString(port), builder.CreateString(ip), isConnected);
+		auto ip_information = Net::CreateIpInformation(builder, 
+			builder.CreateString(port), 
+			builder.CreateString(ip), 
+			builder.CreateString(username),
+			isConnected);
 		auto packet = Net::CreatePacket(builder, Net::Operation_IpInformation, ip_information.Union());
 		builder.FinishSizePrefixed(packet);
 

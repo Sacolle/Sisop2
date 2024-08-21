@@ -201,13 +201,12 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 			correct_path += filename;
 
 			//acontece quando arquivo é criado, renomeado, movido para dentro, ou editado
-			if (event->mask & (IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO)){
+			if (event->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)){
 				//upload
 				// MASKPRINT(IN_CREATE, "criar");
 				// MASKPRINT(IN_CLOSE_WRITE, "editar");
 				// MASKPRINT(IN_MOVED_TO, "mover");
 				
-
 				net::SendFileRequest req(correct_path.c_str());
 				req.send(serde, socket);
 				req.await_response(serde, socket);
@@ -394,9 +393,16 @@ void *client_loop_data(void *arg) {
 
 
 int main(int argc, char** argv){
+
+	/* Na chamada do ./client, os seguintes argumentos são necessários */
+	/* username -> arbitrario */
+	/* server_ip_address -> endereço de IP da máquina que contém o servidor coordenador */
+	/* port_comandos -> porta que define a socket de comandos do server, dada como <cmd_port> (3º argumento) do servidor */
+	/* port_data -> porta arbitrária */
+
 	if(argc < 4){
 		std::cerr << "argumentos insuficientes para começar o servidor" << '\n';
-		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port>" << std::endl;
+		std::cerr << "inicie no padrão: ./client <username> <server_ip_address> <port_comandos> <port_data>" << std::endl;
 		exit(2);
 	}
 

@@ -118,8 +118,10 @@ namespace net {
 		while(!file.eof()){
 			auto data_size = file.read(buff);
 			//got the chunk
-			auto chunk_pckt = serde.build_filedata(buff.data(), data_size);
-			socket->send_checked(chunk_pckt);
+			if (data_size > 0) {
+				auto chunk_pckt = serde.build_filedata(buff.data(), data_size);
+				socket->send_checked(chunk_pckt);
+			}
 		}
 		file.finish();
 	}
@@ -482,10 +484,11 @@ namespace net {
 		socket->send_checked(pckt);
 	}
 
-	ClientInfo::ClientInfo(std::string ip, std::string port, bool isConnected): ip(ip), isConnected(isConnected), port(port), Payload(Net::Operation_IpInformation){}
+	ClientInfo::ClientInfo(std::string ip, std::string port, std::string username,bool isConnected):
+		ip(ip), isConnected(isConnected), port(port), username(username), Payload(Net::Operation_IpInformation){}
 
 	void ClientInfo::send(Serializer& serde, std::shared_ptr<Socket> socket){
-		auto pckt = serde.build_ip_information(port, ip, isConnected);
+		auto pckt = serde.build_ip_information(port, ip, username, isConnected);
 		socket->send_checked(pckt);
 	}
 

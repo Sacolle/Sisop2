@@ -72,12 +72,14 @@ std::string initial_handshake(net::Serializer& serde, std::shared_ptr<net::Socke
 		connect.valid_connection = false; 
 		connect.reply(serde, socket);
 		std::cout << "Login for user " << connect.username << " and id "  << connect.id << " failed" << std::endl; 
+		throw std::runtime_error("Numero máximo de conexões estabelecido");
 	}
 	connect.reply(serde, socket);
 
 	std::shared_ptr<net::Payload> payload_client_info = std::make_shared<net::ClientInfo>(
 		socket->get_their_ip(),
 		connect_raw->coordinator_port()->str(),
+		connect.username,
 		true
 	);
 	send_packet_to_replicas(serde, payload_client_info); 
@@ -150,6 +152,7 @@ void *server_loop_commands(void *arg){
 		username = initial_handshake(serde, socket, &id,  true);
 	}catch(std::exception& e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl;
+		pthread_exit(0);
 	}
 
 	utils::test_and_set_folder(username); 
@@ -181,7 +184,10 @@ void *server_loop_commands(void *arg){
 				send_packet_to_replicas(serde, payload); 
 				//depois manda um ok para o cliente
 				upload->send_response(serde, socket, Net::Status_Ok, res);
-				controller.add_data_packet(username, payload);
+
+				//FIXME: ver se o clone aqui resolve o problema de upload
+				std::shared_ptr<net::Payload> cloned_payload(payload->clone());
+				controller.add_data_packet(username, cloned_payload);
 
 			}else if (payload->get_type() == Net::Operation_Delete){
 				std::shared_ptr<net::Delete> del = std::dynamic_pointer_cast<net::Delete>(payload); 
@@ -250,6 +256,7 @@ void *server_loop_data(void *arg) {
 		username = initial_handshake(serde, socket, &id, false);
 	}catch(std::exception e){
 		std::cout << "Failed to initialize connection: " << e.what() << std::endl; 
+		pthread_exit(0);
 	}
 
 	utils::test_and_set_folder(username);
@@ -600,7 +607,7 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 	case Net::Operation_IpInformation: {
 		auto payload = msg->op_as_IpInformation();
 		return std::make_shared<net::ClientInfo>(
-			payload->ip()->c_str(), payload->port()->c_str(), payload->isConnected()
+			payload->ip()->c_str(), payload->port()->c_str(), payload->username()->str(), payload->isConnected()
 		);
 	} break; 
 	case Net::Operation_Delete: {
@@ -628,7 +635,22 @@ std::shared_ptr<net::Payload> parse_server_replication(uint8_t* buff){
 }
 
 int main(int argc, char** argv) {
-	// ./server <election_value> <number_of_replications> <cmd_port> <data_port> <election_port> 
+
+	/* Na chamada do ./server, os seguintes argumentos são necessários */
+	/* election_value -> valor de id para eleição, deve concordar com o valor nos arquivos txt de setup */
+	/* number_of_replications -> número de replicações, sem contar a chamada atual de ./server */
+	/* cmd_port -> porta arbitrária; vai ser usada como argumento <port_comandos> (3º argumento) do cliente */
+	/* data_port -> porta arbitrária */
+	/* election_port -> porta de eleição, deve concordar com o valor nos arquivos txt de setup */
+
+	/* Além dos argumentos, deve se passar via pipe um arquivo txt contendo as seguintes informações, */
+	/* Para cada replicação, além da chamada atual, uma linha com o seguinte formato: */
+	/* <ip_replica> <porta_replica> <value_replica> */
+	/* onde, */
+	/* ip_replica -> ip da máquina onde está localizada a réplica */
+	/* porta_replica -> porta de eleição da replica, referente a election_port na chamada de ./server da réplica */
+	/* value_replica -> valor de id para eleição, referente a election_value na chamada de ./server da réplica */
+
 	if(argc < 6){
 		std::cout << "numero insuficiente de argumentos" << std::endl;
 		exit(1);
@@ -682,6 +704,8 @@ int main(int argc, char** argv) {
 					if (payload->get_type() == Net::Operation_IpInformation) {
 						std::shared_ptr<net::ClientInfo> clientInfo = std::dynamic_pointer_cast<net::ClientInfo>(payload); 
 						if (clientInfo->isConnected){
+							std::cout << "connections from session: " << clientInfo->username << std::endl;
+							utils::test_and_set_folder(clientInfo->username);
 							election_manager.add_client_info(clientInfo); 
 						} else {
 							election_manager.remove_client_info(clientInfo); 
@@ -734,4 +758,3 @@ int main(int argc, char** argv) {
 	}
 	return 0;
 }
-

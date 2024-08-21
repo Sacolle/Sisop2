@@ -254,7 +254,7 @@ namespace net{
 
 	class ClientInfo : public Payload {
 		public:
-			ClientInfo(std::string ip, std::string port, bool isConnected);
+			ClientInfo(std::string ip, std::string port, std::string username, bool isConnected);
 
 			// sends ip and port of client and inform if the client is connected
 			void send(Serializer& serde, std::shared_ptr<Socket> socket);
@@ -262,9 +262,10 @@ namespace net{
 			// Send Ok
 			void reply(Serializer& serde, std::shared_ptr<Socket> socket);
 
-			inline Payload* clone(){ return new ClientInfo(ip.c_str(), port.c_str(), isConnected); }
+			inline Payload* clone(){ return new ClientInfo(ip.c_str(), port.c_str(), username.c_str(), isConnected); }
 			const std::string ip;
 			const std::string port;
+			const std::string username;
 			const bool isConnected;  	
 			bool operator==(const ClientInfo& rhs); 
 		private:

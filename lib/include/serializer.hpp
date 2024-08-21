@@ -26,7 +26,7 @@ namespace net{
 			FlatBufferBuilder* build_connect(std::string const& username, uint64_t id, const std::string& coordinator_port = "");
 			FlatBufferBuilder* build_download(std::string const& filename);
 			FlatBufferBuilder* build_delete(std::string const& filename, std::string const& username);
-			FlatBufferBuilder* build_ip_information(std::string const& port, std::string const& ip = "", bool isConnected = true);
+			FlatBufferBuilder* build_ip_information(std::string const& port, std::string const& ip = "", std::string const& username = "", bool isConnected = true);
 			FlatBufferBuilder* build_response(Net::Status status, std::string const& msg, std::string *port = nullptr);
 			FlatBufferBuilder* build_election(const int valor);
 			FlatBufferBuilder* build_coordinator();
