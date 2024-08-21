@@ -118,8 +118,10 @@ namespace net {
 		while(!file.eof()){
 			auto data_size = file.read(buff);
 			//got the chunk
-			auto chunk_pckt = serde.build_filedata(buff.data(), data_size);
-			socket->send_checked(chunk_pckt);
+			if (data_size > 0) {
+				auto chunk_pckt = serde.build_filedata(buff.data(), data_size);
+				socket->send_checked(chunk_pckt);
+			}
 		}
 		file.finish();
 	}
