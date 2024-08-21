@@ -201,13 +201,12 @@ void execute_payload(net::Serializer& serde, std::shared_ptr<net::Socket> socket
 			correct_path += filename;
 
 			//acontece quando arquivo é criado, renomeado, movido para dentro, ou editado
-			if (event->mask & (IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO)){
+			if (event->mask & (IN_CLOSE_WRITE | IN_MOVED_TO)){
 				//upload
 				// MASKPRINT(IN_CREATE, "criar");
 				// MASKPRINT(IN_CLOSE_WRITE, "editar");
 				// MASKPRINT(IN_MOVED_TO, "mover");
 				
-
 				net::SendFileRequest req(correct_path.c_str());
 				req.send(serde, socket);
 				req.await_response(serde, socket);
